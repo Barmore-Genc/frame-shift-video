@@ -18,7 +18,13 @@ import { useNavigate } from '@tanstack/react-router';
 import { Menu } from '@ark-ui/react/menu';
 import { useInPageSearch } from '@/hooks/use-in-page-search';
 import { InPageSearch } from './in-page-search';
-import { Trash, ListRestart, X } from 'lucide-react';
+import {
+  Trash,
+  ArrowCounterClockwise,
+  X,
+  Check,
+  Tray,
+} from '@phosphor-icons/react';
 
 export function JobList() {
   const [showCleared, setShowCleared] = useState(false);
@@ -645,19 +651,7 @@ export function JobList() {
                     }`}
                   >
                     {showCleared && (
-                      <svg
-                        className="w-3 h-3 text-white"
-                        viewBox="0 0 12 12"
-                        fill="none"
-                      >
-                        <path
-                          d="M10 3L4.5 8.5L2 6"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
+                      <Check size={12} weight="bold" className="text-white" />
                     )}
                   </div>
                   <span className="text-sm text-gray-900 dark:text-white">
@@ -751,7 +745,7 @@ export function JobList() {
                       : 'hover:bg-blue-50 dark:hover:bg-blue-900/20'
                   }`}
                 >
-                  <ListRestart
+                  <ArrowCounterClockwise
                     size={16}
                     className="text-blue-600 dark:text-blue-400"
                   />
@@ -856,7 +850,11 @@ export function JobList() {
       >
         {jobs.length === 0 ? (
           <div className="text-center py-12">
-            <div className="text-6xl mb-4">📭</div>
+            <Tray
+              size={64}
+              weight="duotone"
+              className="neon-icon mx-auto mb-4"
+            />
             <p className="text-gray-600 dark:text-gray-400 text-lg">
               {showCleared
                 ? 'No jobs found.'

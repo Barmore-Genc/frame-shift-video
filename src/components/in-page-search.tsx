@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { TriangleAlert } from 'lucide-react';
+import { Warning, ArrowUp, ArrowDown, X } from '@phosphor-icons/react';
 
 export interface InPageSearchProps {
   /** The current search query */
@@ -81,7 +81,7 @@ export function InPageSearch({
             className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="Previous match (Shift+Enter)"
           >
-            ↑
+            <ArrowUp size={16} weight="bold" />
           </button>
           <button
             onClick={onNext}
@@ -89,7 +89,7 @@ export function InPageSearch({
             className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             title="Next match (Enter)"
           >
-            ↓
+            <ArrowDown size={16} weight="bold" />
           </button>
         </div>
 
@@ -99,7 +99,7 @@ export function InPageSearch({
           className="px-2 py-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
           title="Close search (Esc)"
         >
-          ✕
+          <X size={16} weight="bold" />
         </button>
       </div>
 
@@ -112,7 +112,7 @@ export function InPageSearch({
         }`}
       >
         <div className="flex items-center gap-2">
-          {showNativeWarning && <TriangleAlert size={14} />}
+          {showNativeWarning && <Warning size={14} weight="bold" />}
           <span>
             {showNativeWarning
               ? "Native search won't find items not currently visible."

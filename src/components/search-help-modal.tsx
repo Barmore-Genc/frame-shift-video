@@ -1,4 +1,5 @@
 import React from 'react';
+import { ClipboardText } from '@phosphor-icons/react';
 
 interface SearchHelpModalProps {
   isOpen: boolean;
@@ -187,7 +188,10 @@ ${HELP_CONTENT}`;
               onClick={handleCopyAIInstructions}
               className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors"
             >
-              📋 Copy AI Help Instructions
+              <span className="inline-flex items-center justify-center gap-2">
+                <ClipboardText size={18} weight="bold" aria-hidden="true" />
+                Copy AI Help Instructions
+              </span>
             </button>
             <button
               onClick={onClose}

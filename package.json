@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ark-ui/react": "^5.39.3",
+    "@phosphor-icons/react": "^2.1.10",
     "@sentry/bun": "^10.76.2",
     "@sentry/react": "^10.76.2",
     "@sentry/vite-plugin": "^5.4.1",
