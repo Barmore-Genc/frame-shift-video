@@ -331,3 +331,15 @@ export interface ExtraMovie {
   movie: string;
   items: ExtraItem[];
 }
+
+/** An extra that was taken out of its movie (it sits in the _removed folder until put back) */
+export interface RemovedExtra {
+  /** Where it is, under the DVDs folder, as the page sends it back to restore it */
+  path: string;
+  /** The movie it came from */
+  movie: string;
+  /** The Plex extras folder it came from */
+  folder: string;
+  /** Its name, without the file ending */
+  name: string;
+}

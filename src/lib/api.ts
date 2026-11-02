@@ -21,6 +21,7 @@ import type {
   ExtraMatch,
   NameSource,
   ExtraMovie,
+  RemovedExtra,
   FandomHint,
 } from '@/types/discs';
 
@@ -932,6 +933,38 @@ export async function removeDiscExtras(paths: string[]): Promise<{
   }
   return (await response.json()) as {
     removed: string[];
+    failed: { path: string; error: string }[];
+  };
+}
+
+/**
+ * The extras that were taken out of movies
+ */
+export async function fetchRemovedExtras(): Promise<RemovedExtra[]> {
+  const response = await fetch(`${API_BASE}/discs/extras/removed`);
+  if (!response.ok) {
+    throw await discError(response, 'Failed to load the removed extras');
+  }
+  return ((await response.json()) as { extras: RemovedExtra[] }).extras;
+}
+
+/**
+ * Put removed extras back in their movie
+ */
+export async function restoreDiscExtras(paths: string[]): Promise<{
+  restored: string[];
+  failed: { path: string; error: string }[];
+}> {
+  const response = await fetch(`${API_BASE}/discs/extras/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paths }),
+  });
+  if (!response.ok) {
+    throw await discError(response, 'Failed to put the extras back');
+  }
+  return (await response.json()) as {
+    restored: string[];
     failed: { path: string; error: string }[];
   };
 }

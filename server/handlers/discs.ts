@@ -20,8 +20,10 @@ import {
 import {
   extraFilePath,
   readExtras,
+  readRemoved,
   removeExtras,
   renameExtra,
+  restoreExtras,
 } from '../extras-state';
 import { findDuplicates } from '../extras-duplicates';
 import { frameJpeg, previewTimes, videoSeconds } from '../extras-preview';
@@ -468,6 +470,33 @@ export async function discsExtrasRemoveHandler(
   if (!body) return json({ error: 'paths are needed' }, 400, corsHeaders);
   return asBadRequest(corsHeaders, async () =>
     json(await removeExtras(discsDir(), body.paths), 200, corsHeaders),
+  );
+}
+
+/**
+ * GET /api/discs/extras/removed
+ * The extras that were taken out of movies, so they can be seen and put back.
+ */
+export async function discsExtrasRemovedHandler(
+  _req: Request,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  return json({ extras: await readRemoved(discsDir()) }, 200, corsHeaders);
+}
+
+/**
+ * POST /api/discs/extras/restore
+ * Body: { paths: string[] }. Puts removed extras back in their movie. Answers which were put back
+ * and which could not be, and why.
+ */
+export async function discsExtrasRestoreHandler(
+  req: Request,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const body = await readBody(req);
+  if (!body) return json({ error: 'paths are needed' }, 400, corsHeaders);
+  return asBadRequest(corsHeaders, async () =>
+    json(await restoreExtras(discsDir(), body.paths), 200, corsHeaders),
   );
 }
 

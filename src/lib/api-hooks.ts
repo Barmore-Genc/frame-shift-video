@@ -38,6 +38,8 @@ import {
   fetchExtraPreview,
   fetchFandomHint,
   removeDiscExtras,
+  fetchRemovedExtras,
+  restoreDiscExtras,
   startExtraMatch,
   renameDiscExtra,
   setDiscEject,
@@ -81,6 +83,7 @@ export const queryKeys = {
   settings: ['settings'] as const,
   discs: ['discs'] as const,
   discExtras: ['disc-extras'] as const,
+  removedExtras: ['removed-extras'] as const,
   hobwork: ['hobwork'] as const,
   subtitles: ['subtitles'] as const,
 };
@@ -601,6 +604,34 @@ export function useRemoveExtras() {
     mutationFn: removeDiscExtras,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.discExtras });
+      queryClient.invalidateQueries({ queryKey: queryKeys.removedExtras });
+      queryClient.invalidateQueries({ queryKey: ['extra-duplicates'] });
+      queryClient.invalidateQueries({ queryKey: ['extra-match'] });
+    },
+  });
+}
+
+/**
+ * Hook to read the extras that were taken out of movies
+ */
+export function useRemovedExtras() {
+  return useQuery({
+    queryKey: queryKeys.removedExtras,
+    queryFn: fetchRemovedExtras,
+    refetchInterval: 15000,
+  });
+}
+
+/**
+ * Hook to put removed extras back in their movie
+ */
+export function useRestoreExtras() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: restoreDiscExtras,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.discExtras });
+      queryClient.invalidateQueries({ queryKey: queryKeys.removedExtras });
       queryClient.invalidateQueries({ queryKey: ['extra-duplicates'] });
       queryClient.invalidateQueries({ queryKey: ['extra-match'] });
     },
