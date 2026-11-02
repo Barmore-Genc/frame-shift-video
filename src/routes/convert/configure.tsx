@@ -11,6 +11,7 @@ import {
 import { useInPageSearch } from '@/hooks/use-in-page-search';
 import { InPageSearch } from '@/components/in-page-search';
 import { AppErrorBoundary } from '@/components/app-error-boundary';
+import { ArrowLeft } from '@phosphor-icons/react';
 
 export const Route = createFileRoute('/convert/configure')({
   component: ConfigurePage,
@@ -169,7 +170,10 @@ function ConfigurePage() {
               disabled={startJobsMutation.isPending}
               className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-gray-500 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              ← Back to File Selection
+              <span className="inline-flex items-center gap-2">
+                <ArrowLeft size={16} weight="bold" aria-hidden="true" />
+                Back to File Selection
+              </span>
             </button>
 
             <div className="flex gap-3">

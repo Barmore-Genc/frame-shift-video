@@ -90,7 +90,7 @@ describe('picture subtitles that could not be read', () => {
       (await screen.findByText(/Some picture subtitles could not be read, so/))
         .textContent,
     ).toContain('stay as pictures');
-    expect(screen.queryAllByText('✓ Text')).toHaveLength(0);
+    expect(screen.queryAllByText('Text')).toHaveLength(0);
   });
 
   test('a movie that can still be converted is offered, next to one that cannot', async () => {

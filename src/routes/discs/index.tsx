@@ -43,6 +43,7 @@ import type {
   DiscsState,
   DiscStage,
 } from '@/types/discs';
+import { Check } from '@phosphor-icons/react';
 
 export const Route = createFileRoute('/discs/')({
   component: DiscsPage,
@@ -707,7 +708,14 @@ function Pipeline({ stage }: { stage: DiscStage | 'scanning' }) {
                 : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
           }`}
         >
-          {index < at ? '✓ ' : ''}
+          {index < at ? (
+            <Check
+              size={12}
+              weight="bold"
+              aria-hidden="true"
+              className="mr-1 inline"
+            />
+          ) : null}
           {step.label}
         </li>
       ))}
@@ -751,7 +759,13 @@ function WorkingSection({ state }: { state: DiscsState }) {
               </strong>
               {chosenName(state.next, disc.stage) && (
                 <p className="mt-1 text-sm font-medium text-green-700 dark:text-green-400">
-                  ✓ You picked “{chosenName(state.next, disc.stage)}”. The disc
+                  <Check
+                    size={14}
+                    weight="bold"
+                    aria-hidden="true"
+                    className="mr-1 inline"
+                  />
+                  You picked “{chosenName(state.next, disc.stage)}”. The disc
                   gets that name when the copy is done.
                 </p>
               )}
@@ -806,7 +820,12 @@ function WorkingSection({ state }: { state: DiscsState }) {
               : state.recent.slice(0, FILED_SHOWN)
             ).map((done) => (
               <li key={done.name}>
-                <span className="text-green-600 dark:text-green-400">✓</span>{' '}
+                <Check
+                  size={14}
+                  weight="bold"
+                  aria-label="Filed"
+                  className="inline text-green-600 dark:text-green-400"
+                />{' '}
                 {done.name}{' '}
                 <span className="text-sm text-gray-600 dark:text-gray-400">
                   {secondsAgo(done.at)}

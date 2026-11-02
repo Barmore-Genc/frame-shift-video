@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { useDiscs } from '@/lib/api-hooks';
+import { Disc } from '@phosphor-icons/react';
 
 /**
  * The home page's way into the Discs page, with what the ripper is doing at a glance.
@@ -32,7 +33,12 @@ export function DiscsCard() {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border-2 border-gray-200 dark:border-gray-600 p-12 shadow-lg max-w-md w-full text-center">
-      <div className="text-6xl mb-6">📀</div>
+      <Disc
+        size={72}
+        weight="duotone"
+        className="neon-icon mx-auto mb-6"
+        aria-hidden="true"
+      />
       <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
         Discs
       </h2>

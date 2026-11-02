@@ -11,6 +11,7 @@ import {
   useSubtitles,
 } from '@/lib/api-hooks';
 import type { SubtitleFile, SubtitleTrack } from '@/types/subtitles';
+import { Check, X } from '@phosphor-icons/react';
 
 const BUTTON =
   'min-h-[44px] px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
@@ -154,7 +155,10 @@ function FileRow({
         </span>
       ) : (
         <span className="text-sm text-green-700 dark:text-green-400">
-          ✓ Text
+          <span className="inline-flex items-center gap-1">
+            <Check size={14} weight="bold" aria-hidden="true" />
+            Text
+          </span>
         </span>
       )}
     </li>
@@ -544,7 +548,21 @@ export function SubtitlesSection() {
                           : 'text-red-600 dark:text-red-400'
                       }
                     >
-                      {result.ok ? '✓' : '✗'}
+                      {result.ok ? (
+                        <Check
+                          size={14}
+                          weight="bold"
+                          aria-label="Done"
+                          className="inline"
+                        />
+                      ) : (
+                        <X
+                          size={14}
+                          weight="bold"
+                          aria-label="Failed"
+                          className="inline"
+                        />
+                      )}
                     </span>{' '}
                     {result.path.split('/').pop()}{' '}
                     <span className="text-sm text-gray-600 dark:text-gray-400">

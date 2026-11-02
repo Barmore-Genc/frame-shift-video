@@ -13,6 +13,7 @@ import {
 import { useSettings } from '@/lib/api-hooks';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import Highlighter from 'react-highlight-words';
+import { ArrowCounterClockwise } from '@phosphor-icons/react';
 
 interface ConversionConfigProps {
   /** Selected files with their relative paths */
@@ -322,7 +323,11 @@ export function ConversionConfig({
               className="flex items-center gap-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
               title={`Undo (${removedHistory.length} action${removedHistory.length !== 1 ? 's' : ''} available)`}
             >
-              <span>↶</span>
+              <ArrowCounterClockwise
+                size={16}
+                weight="bold"
+                aria-hidden="true"
+              />
               <span>Undo</span>
               {removedHistory.length > 1 && (
                 <span className="ml-1 px-1.5 py-0.5 bg-blue-500 rounded text-xs">

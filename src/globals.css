@@ -1,11 +1,44 @@
 @import 'tailwindcss';
 
+/* Always dark: navy surfaces with a neon blue accent. <html class="dark"> is set in index.html. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --scrollbar-track: #f1f5f9;
-  --scrollbar-thumb: #cbd5e1;
-  --scrollbar-thumb-hover: #94a3b8;
+  --background: #050b14;
+  --foreground: #f2f7fc;
+  --neon: #1e90ff;
+  --neon-bright: #4faaff;
+  --neon-pale: #a8d8ff;
+  --scrollbar-track: #081220;
+  --scrollbar-thumb: #16304a;
+  --scrollbar-thumb-hover: #1e90ff;
+  color-scheme: dark;
+}
+
+/* The palette: #050B14 page, #081220 cards, #0C1929 panels, #102238 hover, #1E90FF neon. */
+@theme {
+  --color-white: #f2f7fc;
+  --color-gray-50: #f2f7fc;
+  --color-gray-100: #dde8f3;
+  --color-gray-200: #c3d2e3;
+  --color-gray-300: #a9b8c8;
+  --color-gray-400: #a9b8c8;
+  --color-gray-500: #718399;
+  --color-gray-600: #3b5575;
+  --color-gray-700: #102238;
+  --color-gray-800: #081220;
+  --color-gray-900: #050b14;
+  --color-gray-950: #03070d;
+  --color-blue-50: #e8f4ff;
+  --color-blue-100: #d3eaff;
+  --color-blue-200: #a8d8ff;
+  --color-blue-300: #7fc3ff;
+  --color-blue-400: #4faaff;
+  --color-blue-500: #1e90ff;
+  --color-blue-600: #1e90ff;
+  --color-blue-700: #4faaff;
+  --color-blue-800: #0f3a66;
+  --color-blue-900: #0c2a4a;
 }
 
 @theme inline {
@@ -15,20 +48,43 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --scrollbar-track: #0f172a;
-    --scrollbar-thumb: #334155;
-    --scrollbar-thumb-hover: #475569;
-  }
-}
-
 body {
-  background: var(--background);
+  background: radial-gradient(
+      circle at top,
+      #0c1d30 0%,
+      #081220 38%,
+      #050b14 100%
+    )
+    fixed;
+  background-color: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Neon: layered glow for brand text and icons, a soft one for the main buttons. */
+.neon {
+  color: var(--neon);
+  text-shadow:
+    0 0 4px var(--neon),
+    0 0 10px rgba(30, 144, 255, 0.75),
+    0 0 24px rgba(30, 144, 255, 0.35);
+}
+
+.neon-icon {
+  color: var(--neon);
+  filter: drop-shadow(0 0 4px var(--neon))
+    drop-shadow(0 0 12px rgba(30, 144, 255, 0.5));
+}
+
+a.bg-blue-600,
+button.bg-blue-600 {
+  color: #050b14;
+  box-shadow: 0 0 14px rgba(30, 144, 255, 0.45);
+}
+
+a.bg-blue-600:hover,
+button.bg-blue-600:hover {
+  box-shadow: 0 0 20px rgba(79, 170, 255, 0.6);
 }
 
 /* Custom Scrollbar Styles */
@@ -60,20 +116,6 @@ body {
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
-/* Dark mode support for manual theme toggle */
-.dark ::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-color: var(--scrollbar-track);
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
 /* Slow spin animation for processing state */
 @keyframes spin-slow {
   from {
@@ -93,7 +135,7 @@ input[type='checkbox'] {
   width: 1.25rem;
   height: 1.25rem;
   flex-shrink: 0;
-  accent-color: #2563eb;
+  accent-color: #1e90ff;
 }
 
 label:has(> input[type='checkbox']) {

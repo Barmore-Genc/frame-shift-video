@@ -1,5 +1,6 @@
 import { Link, useLocation } from '@tanstack/react-router';
 import { useDiscs } from '@/lib/api-hooks';
+import { Disc, FilmSlate } from '@phosphor-icons/react';
 
 /**
  * A button fixed in the top-right corner of every page, so the DVD ripper is one click away
@@ -19,7 +20,11 @@ export function DiscsCornerButton() {
       to={onDiscs ? '/' : '/discs'}
       className={`${onDiscs ? 'absolute' : 'fixed'} top-4 right-4 z-50 inline-flex items-center gap-2 px-5 py-3 rounded-full bg-blue-600 text-white font-medium shadow-lg hover:bg-blue-700 transition-colors`}
     >
-      <span aria-hidden="true">{onDiscs ? '📹' : '📀'}</span>
+      {onDiscs ? (
+        <FilmSlate size={20} weight="bold" aria-hidden="true" />
+      ) : (
+        <Disc size={20} weight="bold" aria-hidden="true" />
+      )}
       {onDiscs ? 'Jobs' : 'Discs'}
       {!onDiscs && (needsYou || working) && (
         <span

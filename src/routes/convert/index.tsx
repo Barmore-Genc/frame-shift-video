@@ -13,13 +13,15 @@ import { InPageSearch } from '@/components/in-page-search';
 import Highlighter from 'react-highlight-words';
 import { AppErrorBoundary } from '@/components/app-error-boundary';
 import {
-  Folder,
-  FolderCheck,
+  FolderSimple,
+  FolderOpen,
   FileVideo,
-  FileCheck,
-  HelpCircle,
+  SealCheck,
+  Question,
   File,
-} from 'lucide-react';
+  Check,
+  X,
+} from '@phosphor-icons/react';
 
 export const Route = createFileRoute('/convert/')({
   component: ConvertPage,
@@ -336,20 +338,22 @@ function ConvertPage() {
     if (item.isDirectory) {
       if (item.allConverted)
         return (
-          <FolderCheck
+          <FolderOpen
             size={16}
             className="text-green-600 dark:text-green-400"
           />
         ); // Fully converted folders
-      return <Folder size={16} className="text-gray-600 dark:text-gray-400" />;
+      return (
+        <FolderSimple size={16} className="text-gray-600 dark:text-gray-400" />
+      );
     }
     if (isConvertedFile(item.name))
       return (
-        <FileCheck size={16} className="text-green-600 dark:text-green-400" />
+        <SealCheck size={16} className="text-green-600 dark:text-green-400" />
       ); // Converted files
     if (item.hasConvertedVersion)
       return (
-        <FileCheck size={16} className="text-green-600 dark:text-green-400" />
+        <SealCheck size={16} className="text-green-600 dark:text-green-400" />
       ); // Server computed this
     if (isVideoFile(item.name))
       return (
@@ -449,19 +453,7 @@ function ConvertPage() {
                 }`}
               >
                 {isSelected && (
-                  <svg
-                    className="w-3 h-3 text-white"
-                    viewBox="0 0 12 12"
-                    fill="none"
-                  >
-                    <path
-                      d="M10 3L4.5 8.5L2 6"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <Check size={12} weight="bold" className="text-white" />
                 )}
                 {isIndeterminate && (
                   <div className="w-2 h-0.5 bg-white rounded"></div>
@@ -595,19 +587,11 @@ function ConvertPage() {
                         }`}
                       >
                         {advancedMode && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            viewBox="0 0 12 12"
-                            fill="none"
-                          >
-                            <path
-                              d="M10 3L4.5 8.5L2 6"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
+                          <Check
+                            size={12}
+                            weight="bold"
+                            className="text-white"
+                          />
                         )}
                       </div>
                       <span className="text-sm text-gray-900 dark:text-white">
@@ -639,19 +623,11 @@ function ConvertPage() {
                         }`}
                       >
                         {videosOnly && !advancedMode && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            viewBox="0 0 12 12"
-                            fill="none"
-                          >
-                            <path
-                              d="M10 3L4.5 8.5L2 6"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
+                          <Check
+                            size={12}
+                            weight="bold"
+                            className="text-white"
+                          />
                         )}
                       </div>
                       <span className="text-sm text-gray-900 dark:text-white">
@@ -677,19 +653,11 @@ function ConvertPage() {
                         }`}
                       >
                         {showHidden && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            viewBox="0 0 12 12"
-                            fill="none"
-                          >
-                            <path
-                              d="M10 3L4.5 8.5L2 6"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
+                          <Check
+                            size={12}
+                            weight="bold"
+                            className="text-white"
+                          />
                         )}
                       </div>
                       <span className="text-sm text-gray-900 dark:text-white">
@@ -715,19 +683,11 @@ function ConvertPage() {
                         }`}
                       >
                         {hideConverted && (
-                          <svg
-                            className="w-3 h-3 text-white"
-                            viewBox="0 0 12 12"
-                            fill="none"
-                          >
-                            <path
-                              d="M10 3L4.5 8.5L2 6"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
+                          <Check
+                            size={12}
+                            weight="bold"
+                            className="text-white"
+                          />
                         )}
                       </div>
                       <span className="text-sm text-gray-900 dark:text-white">
@@ -760,7 +720,7 @@ function ConvertPage() {
                 className="min-h-[44px] px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center gap-2 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
                 title="Search pattern help"
               >
-                <HelpCircle size={18} />
+                <Question size={18} />
                 <span className="hidden sm:inline">Help</span>
               </button>
               {searchQuery && (
@@ -770,7 +730,7 @@ function ConvertPage() {
                   title="Clear search"
                   aria-label="Clear the search"
                 >
-                  ✕
+                  <X size={18} weight="bold" />
                 </button>
               )}
             </div>
