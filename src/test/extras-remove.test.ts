@@ -11,7 +11,12 @@ import { execFileSync } from 'child_process';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { removeExtras } from '../../server/extras-state';
+import {
+  readExtras,
+  readRemoved,
+  removeExtras,
+  restoreExtras,
+} from '../../server/extras-state';
 import { findDuplicates } from '../../server/extras-duplicates';
 import {
   discsExtrasDuplicatesHandler,
@@ -288,5 +293,88 @@ describe('finding duplicates', () => {
       (await discsExtrasDuplicatesHandler(new Request('http://x/api'), {}))
         .status,
     ).toBe(400);
+  });
+});
+
+describe('the removed extras', () => {
+  const GONE = `_removed/${MOVIE}/Other/Extra 01 (6 min).mkv`;
+
+  test("are listed with their movie and folder, and are no longer the movie's extras", async () => {
+    await place(A);
+    await place(B);
+    await removeExtras(dir, [A, B]);
+    // In the order of the extras folders, so a trailer comes before an "Other".
+    expect(await readRemoved(dir)).toEqual([
+      {
+        path: `_removed/${MOVIE}/Trailers/Previews.mkv`,
+        movie: MOVIE,
+        folder: 'Trailers',
+        name: 'Previews',
+      },
+      { path: GONE, movie: MOVIE, folder: 'Other', name: 'Extra 01 (6 min)' },
+    ]);
+    expect(await readExtras(dir)).toEqual([]);
+  });
+
+  test('nothing removed is an empty list', async () => {
+    expect(await readRemoved(dir)).toEqual([]);
+  });
+
+  test('putting back returns the file to its folder and tidies the empty one', async () => {
+    await place(A);
+    await removeExtras(dir, [A]);
+    expect(await restoreExtras(dir, [GONE])).toEqual({
+      restored: [GONE],
+      failed: [],
+    });
+    expect(await exists(A)).toBe(true);
+    expect(await exists(`_removed/${MOVIE}`)).toBe(false);
+    expect(await readRemoved(dir)).toEqual([]);
+  });
+
+  test('a name taken since gets a number, so the newer file is kept', async () => {
+    await place(A);
+    await removeExtras(dir, [A]);
+    await place(A);
+    await fs.writeFile(path.join(dir, A), 'newer');
+    await restoreExtras(dir, [GONE]);
+    expect(await fs.readFile(path.join(dir, A), 'utf8')).toBe('newer');
+    expect(
+      await exists(`_converted/${MOVIE}/Other/Extra 01 (6 min) (2).mkv`),
+    ).toBe(true);
+  });
+
+  test('an extra whose movie is gone is reported, and the others are still put back', async () => {
+    await place(A);
+    await removeExtras(dir, [A]);
+    await place(`_removed/Gone (1999)/Other/Extra 01 (1 min).mkv`);
+    const answer = await restoreExtras(dir, [
+      `_removed/Gone (1999)/Other/Extra 01 (1 min).mkv`,
+      GONE,
+    ]);
+    expect(answer.restored).toEqual([GONE]);
+    expect(answer.failed).toEqual([
+      {
+        path: `_removed/Gone (1999)/Other/Extra 01 (1 min).mkv`,
+        error: 'That movie is not there any more',
+      },
+    ]);
+  });
+
+  test('only a video under _removed in an extras folder can be put back', async () => {
+    await place(`_converted/${MOVIE}/Other/Extra 09 (1 min).mkv`);
+    const answer = await restoreExtras(dir, [
+      `_converted/${MOVIE}/Other/Extra 09 (1 min).mkv`,
+      `_removed/${MOVIE}/../${MOVIE}/Other/x.mkv`,
+      `_removed/${MOVIE}/Notes/x.mkv`,
+      `_removed/${MOVIE}/Other/x.txt`,
+      42,
+    ]);
+    expect(answer.restored).toEqual([]);
+    expect(answer.failed).toHaveLength(5);
+    expect(
+      answer.failed.every((f) => f.error === 'That is not a removed extra'),
+    ).toBe(true);
+    await expect(restoreExtras(dir, [])).rejects.toThrow('Pick the extras');
   });
 });

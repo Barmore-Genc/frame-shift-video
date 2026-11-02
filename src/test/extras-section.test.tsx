@@ -40,6 +40,9 @@ let matchState: unknown;
 let matchStarted: string[];
 let dupGroups: string[][];
 let removed: string[][];
+let removedList: unknown[];
+let restored: string[][];
+let movieList: unknown[];
 let removeFails: { path: string; error: string }[];
 const realFetch = globalThis.fetch;
 
@@ -53,11 +56,27 @@ beforeEach(() => {
   matchStarted = [];
   dupGroups = [];
   removed = [];
+  removedList = [];
+  restored = [];
+  movieList = MOVIES;
   removeFails = [];
+  try {
+    localStorage.clear();
+  } catch {
+    // Not there: nothing to clear.
+  }
   sources = [];
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
     if (String(url).includes('/discs/extras/duplicates')) {
       return new Response(JSON.stringify({ groups: dupGroups }));
+    }
+    if (String(url).includes('/discs/extras/removed')) {
+      return new Response(JSON.stringify({ extras: removedList }));
+    }
+    if (String(url).includes('/discs/extras/restore')) {
+      const paths = JSON.parse(String(init?.body)).paths as string[];
+      restored.push(paths);
+      return new Response(JSON.stringify({ restored: paths, failed: [] }));
     }
     if (String(url).includes('/discs/extras/remove')) {
       const paths = JSON.parse(String(init?.body)).paths as string[];
@@ -98,7 +117,7 @@ beforeEach(() => {
         ? new Response(JSON.stringify({ error: failWith }), { status: 400 })
         : new Response(JSON.stringify({ path: 'x' }));
     }
-    return new Response(JSON.stringify({ movies: MOVIES }));
+    return new Response(JSON.stringify({ movies: movieList }));
   }) as unknown as typeof fetch;
 });
 
@@ -556,7 +575,7 @@ describe('the "Name the extras" section', () => {
     expect(await checked()).toEqual([true, false]);
   });
 
-  test('Remove selected needs a selection, asks first, and then moves just those', async () => {
+  test('Remove selected needs a selection, then moves just those at once', async () => {
     page();
     await pick('Making Of');
     expect(
@@ -568,24 +587,137 @@ describe('the "Name the extras" section', () => {
     ).toBe(true);
     fireEvent.click(await pick('Trailer 01 (2 min)'));
     click('Remove selected (1)');
-    const dialog = await screen.findByRole('alertdialog');
-    expect(dialog.textContent).toContain('Trailer 01 (2 min)');
-    expect(dialog.textContent).toContain('not deleted');
-    expect(removed).toEqual([]);
-    click('Move them out');
     await waitFor(() => expect(removed).toEqual([[TRAILER]]));
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect((await screen.findByRole('status')).textContent).toContain(
+      'Moved 1 extra to the Removed tab',
+    );
     expect((await pick('Trailer 01 (2 min)')).checked).toBe(false);
   });
 
-  test('Cancel removes nothing', async () => {
+  test('the Remove button of one extra moves only that one', async () => {
     page();
-    fireEvent.click(await pick('Making Of'));
-    click('Remove selected (1)');
-    click('Cancel');
-    expect(screen.queryByRole('alertdialog')).toBeNull();
-    expect(removed).toEqual([]);
-    expect((await pick('Making Of')).checked).toBe(true);
+    await pick('Making Of');
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Remove the extra Making Of from Duma (2005)',
+      }),
+    );
+    await waitFor(() => expect(removed).toEqual([[MAKING]]));
+  });
+
+  test('the Removed tab lists what was taken out, and puts it back', async () => {
+    removedList = [
+      {
+        path: '_removed/Duma (2005)/Other/Extra 02 (2 min).mkv',
+        movie: 'Duma (2005)',
+        folder: 'Other',
+        name: 'Extra 02 (2 min)',
+      },
+      {
+        path: '_removed/Duma (2005)/Trailers/Trailer 02 (1 min).mkv',
+        movie: 'Duma (2005)',
+        folder: 'Trailers',
+        name: 'Trailer 02 (1 min)',
+      },
+    ];
+    page();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Removed (2)' }));
+    expect(screen.getByText('Extra 02 (2 min)')).toBeTruthy();
+    expect(screen.queryByText('Making Of')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Put Trailer 02 (1 min) back in Duma (2005)',
+      }),
+    );
+    await waitFor(() =>
+      expect(restored).toEqual([
+        ['_removed/Duma (2005)/Trailers/Trailer 02 (1 min).mkv'],
+      ]),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Put all back (2)' }));
+    await waitFor(() => expect(restored.length).toBe(2));
+    expect(restored[1]).toEqual([
+      '_removed/Duma (2005)/Other/Extra 02 (2 min).mkv',
+      '_removed/Duma (2005)/Trailers/Trailer 02 (1 min).mkv',
+    ]);
+  });
+
+  test('the Removed tab says when nothing was removed', async () => {
+    page();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Removed (0)' }));
+    expect(screen.getByText(/Nothing has been removed/)).toBeTruthy();
+  });
+
+  test('a movie folds away, and says how many extras it has left to name', async () => {
+    page();
+    const heading = await screen.findByRole('button', {
+      name: /^Duma \(2005\)\s*\d+ extras?/,
+    });
+    expect(heading.getAttribute('aria-expanded')).toBe('true');
+    expect(heading.textContent).toContain('2 extras, 1 not named');
+    fireEvent.click(heading);
+    expect(heading.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByRole('button', { name: 'Select all' })).toBeNull();
+    expect(
+      screen.queryByRole('textbox', {
+        name: 'Name of the extra Making Of in Duma (2005)',
+      }),
+    ).toBeNull();
+    fireEvent.click(heading);
+    expect(
+      await nameBox('Name of the extra Making Of in Duma (2005)'),
+    ).toBeTruthy();
+  });
+
+  test('a movie with everything named starts folded, and Expand all opens every movie', async () => {
+    movieList = [
+      {
+        movie: 'Done (2001)',
+        items: [
+          {
+            path: '_converted/Done (2001)/Featurettes/Making Of.mkv',
+            folder: 'Featurettes',
+            name: 'Making Of',
+            unnamed: false,
+          },
+        ],
+      },
+      ...MOVIES,
+    ];
+    page();
+    const done = await screen.findByRole('button', {
+      name: /^Done \(2001\)\s*\d+ extras?/,
+    });
+    expect(done.getAttribute('aria-expanded')).toBe('false');
+    expect(done.textContent).toContain('all named');
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+    expect(done.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+    expect(
+      screen
+        .getAllByRole('button', { name: /^.+ \(\d{4}\)\s*\d+ extras?/ })
+        .map((b) => b.getAttribute('aria-expanded')),
+    ).toEqual(['false', 'false']);
+  });
+
+  test('Enter in the name box saves, but not when nothing was typed', async () => {
+    page();
+    const box = await nameBox(
+      'Name of the extra Trailer 01 (2 min) in Duma (2005)',
+    );
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(renames).toEqual([]);
+    fireEvent.change(box, { target: { value: 'Teaser' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() =>
+      expect(renames).toEqual([
+        {
+          path: '_converted/Duma (2005)/Trailers/Trailer 01 (2 min).mkv',
+          name: 'Teaser',
+        },
+      ]),
+    );
   });
 
   test('copies are pointed out, and Select copies keeps the named one', async () => {
@@ -621,7 +753,6 @@ describe('the "Name the extras" section', () => {
     await pick('Making Of');
     click('Select all');
     click('Remove selected (2)');
-    click('Move them out');
     expect(
       (await screen.findAllByRole('alert')).map((a) => a.textContent).join(' '),
     ).toContain('Making Of (That extra is not there any more)');

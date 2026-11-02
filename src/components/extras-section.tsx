@@ -1,17 +1,25 @@
 import { useState } from 'react';
+import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { CollapsibleCard } from '@/components/collapsible-card';
 import {
   useDiscExtras,
   useExtraDuplicates,
   useExtraMatch,
   useRemoveExtras,
+  useRemovedExtras,
+  useRestoreExtras,
   useExtraPreview,
   useStartExtraMatch,
   useExtraSources,
   useRenameDiscExtra,
 } from '@/lib/api-hooks';
 import { discExtraFileUrl, discExtraFrameUrl } from '@/lib/api';
-import type { ExtraItem, ExtraMovie, ExtraSuggestion } from '@/types/discs';
+import type {
+  ExtraItem,
+  ExtraMovie,
+  ExtraSuggestion,
+  RemovedExtra,
+} from '@/types/discs';
 
 const FOLDERS = [
   'Trailers',
@@ -211,6 +219,7 @@ function ExtraRow({
   copyOf: string[];
 }) {
   const rename = useRenameDiscExtra();
+  const removeOne = useRemoveExtras();
   // The ripper's own name ("Trailer 01 (2 min)") is not something to edit into a real one, so a
   // box for an extra with no name yet starts empty; what it is called now is shown above it.
   const [name, setName] = useState(item.unnamed ? '' : item.name);
@@ -219,6 +228,12 @@ function ExtraRow({
   const changed =
     (typed !== '' && typed !== item.name) || folder !== item.folder;
   const id = `${item.path}`;
+  const save = () =>
+    rename.mutate({
+      path: item.path,
+      name: typed || item.name,
+      ...(folder !== item.folder ? { folder } : {}),
+    });
 
   return (
     <li
@@ -287,6 +302,9 @@ function ExtraRow({
         value={name}
         placeholder={item.unnamed ? 'Type its name' : undefined}
         onChange={(event) => setName(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && changed && !rename.isPending) save();
+        }}
       />
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <label className="text-sm text-gray-700 dark:text-gray-300">
@@ -308,15 +326,18 @@ function ExtraRow({
           type="button"
           className={SMALL}
           disabled={!changed || rename.isPending}
-          onClick={() =>
-            rename.mutate({
-              path: item.path,
-              name: typed || item.name,
-              ...(folder !== item.folder ? { folder } : {}),
-            })
-          }
+          onClick={save}
         >
           Save
+        </button>
+        <button
+          type="button"
+          className="min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          disabled={removeOne.isPending}
+          aria-label={`Remove the extra ${item.name} from ${movie}`}
+          onClick={() => removeOne.mutate([item.path])}
+        >
+          Remove
         </button>
       </div>
       {rename.error && (
@@ -412,12 +433,17 @@ function Sources({ movie, enabled }: { movie: string; enabled: boolean }) {
 }
 
 /** The extras of one movie, with what matching suggested for each, and ways to pick and remove them. */
-function MovieExtras({ movie }: { movie: ExtraMovie }) {
+function MovieExtras({
+  movie,
+  onShowRemoved,
+}: {
+  movie: ExtraMovie;
+  onShowRemoved: () => void;
+}) {
   const { data } = useExtraMatch(movie.movie);
   const duplicates = useExtraDuplicates(movie.movie, movie.items.length > 1);
   const remove = useRemoveExtras();
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [asking, setAsking] = useState(false);
   const anyUnnamed = movie.items.some((i) => i.unnamed);
   const paths = movie.items.map((i) => i.path);
   const groups = duplicates.data ?? [];
@@ -440,7 +466,6 @@ function MovieExtras({ movie }: { movie: ExtraMovie }) {
     });
   const button =
     'min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed';
-  const names = (list: string[]) => list.map(nameOf).join(', ');
   return (
     <>
       <MatchBar movie={movie.movie} enabled={anyUnnamed} />
@@ -480,50 +505,33 @@ function MovieExtras({ movie }: { movie: ExtraMovie }) {
           type="button"
           className={button}
           disabled={count === 0 || remove.isPending}
-          onClick={() => setAsking(true)}
+          onClick={() =>
+            remove.mutate(
+              paths.filter((p) => selected.has(p)),
+              { onSuccess: () => setSelected(new Set()) },
+            )
+          }
         >
           Remove selected{count > 0 ? ` (${count})` : ''}
         </button>
       </div>
-      {asking && count > 0 && (
-        <div
-          role="alertdialog"
-          aria-label="Remove the selected extras"
-          className="mt-2 rounded-lg border border-amber-500 p-3"
+      {remove.data && remove.data.removed.length > 0 && (
+        <p
+          role="status"
+          className="mt-2 text-sm text-gray-700 dark:text-gray-300"
         >
-          <p className="text-sm text-gray-900 dark:text-white">
-            Take {count === 1 ? 'this extra' : `these ${count} extras`} out of{' '}
-            {movie.movie}? {names(paths.filter((p) => selected.has(p)))}. They
-            are moved to the _removed folder, not deleted: move a file back to
-            undo.
-          </p>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              className={button}
-              onClick={() =>
-                remove.mutate(
-                  paths.filter((p) => selected.has(p)),
-                  {
-                    onSuccess: () => {
-                      setSelected(new Set());
-                      setAsking(false);
-                    },
-                  },
-                )
-              }
-            >
-              Move them out
-            </button>
-            <button
-              type="button"
-              className={button}
-              onClick={() => setAsking(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
+          Moved {remove.data.removed.length}{' '}
+          {remove.data.removed.length === 1 ? 'extra' : 'extras'} to the Removed
+          tab, where {remove.data.removed.length === 1 ? 'it' : 'they'} can be
+          put back.{' '}
+          <button
+            type="button"
+            onClick={onShowRemoved}
+            className="text-blue-700 underline dark:text-blue-300"
+          >
+            Open the Removed tab
+          </button>
+        </p>
       )}
       {remove.error && (
         <p role="alert" className="mt-1 text-sm text-red-600 dark:text-red-400">
@@ -560,39 +568,245 @@ function MovieExtras({ movie }: { movie: ExtraMovie }) {
   );
 }
 
+const MOVIES_OPEN = 'extras-movies-open';
+
+function readOpenMap(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(MOVIES_OPEN) ?? '{}') as Record<
+      string,
+      boolean
+    >;
+  } catch {
+    return {};
+  }
+}
+
+/** A movie's extras under a heading that folds them away. */
+function MovieSection({
+  movie,
+  open,
+  onToggle,
+  onShowRemoved,
+}: {
+  movie: ExtraMovie;
+  open: boolean;
+  onToggle: () => void;
+  onShowRemoved: () => void;
+}) {
+  const unnamed = movie.items.filter((i) => i.unnamed).length;
+  const Caret = open ? CaretDown : CaretRight;
+  return (
+    <section>
+      <h3 className="font-semibold text-gray-900 dark:text-white">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={onToggle}
+          className="flex min-h-[44px] w-full items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        >
+          <Caret size={18} weight="bold" aria-hidden="true" />
+          <span className="flex-1">{movie.movie}</span>
+          <span className="text-sm font-normal text-gray-600 dark:text-gray-300">
+            {movie.items.length} {movie.items.length === 1 ? 'extra' : 'extras'}
+            {unnamed > 0 ? `, ${unnamed} not named` : ', all named'}
+          </span>
+        </button>
+      </h3>
+      {open && (
+        <>
+          <Sources
+            movie={movie.movie}
+            enabled={movie.items.some((i) => i.unnamed)}
+          />
+          <MovieExtras movie={movie} onShowRemoved={onShowRemoved} />
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Extras that were taken out of movies, with a way to put them back. */
+function RemovedExtras({ extras }: { extras: RemovedExtra[] }) {
+  const restore = useRestoreExtras();
+  const button =
+    'min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed';
+  if (extras.length === 0) {
+    return (
+      <p className="text-sm text-gray-600 dark:text-gray-300">
+        Nothing has been removed. Extras you remove from a movie wait here, and
+        can be put back.
+      </p>
+    );
+  }
+  const movies = [...new Set(extras.map((e) => e.movie))];
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-gray-600 dark:text-gray-300">
+        These are out of their movies, so Plex does not show them. They are kept
+        in the _removed folder, not deleted.
+      </p>
+      {restore.error && (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          {restore.error.message}
+        </p>
+      )}
+      {restore.data && restore.data.failed.length > 0 && (
+        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+          Could not put back {restore.data.failed.length}:{' '}
+          {restore.data.failed
+            .map((f) => `${f.path.split('/').pop()} (${f.error})`)
+            .join(', ')}
+        </p>
+      )}
+      {movies.map((movie) => {
+        const mine = extras.filter((e) => e.movie === movie);
+        return (
+          <section key={movie}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-semibold text-gray-900 dark:text-white">
+                {movie}
+              </h3>
+              <button
+                type="button"
+                className={button}
+                disabled={restore.isPending}
+                onClick={() => restore.mutate(mine.map((e) => e.path))}
+              >
+                Put all back ({mine.length})
+              </button>
+            </div>
+            <ul className="mt-2 space-y-2">
+              {mine.map((extra) => (
+                <li
+                  key={extra.path}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 p-2 dark:border-gray-600"
+                >
+                  <span className="text-gray-900 dark:text-white">
+                    {extra.name}{' '}
+                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                      ({extra.folder})
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={restore.isPending}
+                    aria-label={`Put ${extra.name} back in ${movie}`}
+                    onClick={() => restore.mutate([extra.path])}
+                  >
+                    Put back
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * Names the extras of ripped movies. A disc stores no names for them, so the ripper only sorts them
- * by length; Plex shows what is typed here.
+ * by length; Plex shows what is typed here. Extras taken out of a movie wait in the Removed tab.
  */
 export function ExtrasSection() {
   const { data } = useDiscExtras();
-  if (!data || data.length === 0) return null;
-  const unnamed = data.reduce(
+  const removed = useRemovedExtras().data ?? [];
+  const [tab, setTab] = useState<'name' | 'removed'>('name');
+  const [openMap, setOpenMap] = useState(readOpenMap);
+  const movies = data ?? [];
+  if (movies.length === 0 && removed.length === 0) return null;
+  const unnamed = movies.reduce(
     (sum, movie) => sum + movie.items.filter((i) => i.unnamed).length,
     0,
   );
+  // A movie with something to name starts open; one that is all named starts folded.
+  const isOpen = (movie: ExtraMovie) =>
+    openMap[movie.movie] ?? movie.items.some((i) => i.unnamed);
+  const setOpen = (next: Record<string, boolean>) => {
+    setOpenMap(next);
+    try {
+      localStorage.setItem(MOVIES_OPEN, JSON.stringify(next));
+    } catch {
+      // Remembering is a convenience only.
+    }
+  };
+  const setAll = (open: boolean) =>
+    setOpen(Object.fromEntries(movies.map((m) => [m.movie, open])));
+  const tabClass = (active: boolean) =>
+    `min-h-[44px] px-4 py-2 rounded-lg text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+      active
+        ? 'bg-blue-600 text-white'
+        : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'
+    }`;
 
   return (
     <CollapsibleCard
       title="Name the extras"
-      help="A DVD does not store names for its bonus features, so they are sorted by length and called Trailer 01, Featurette 01 and so on. Try to match the names listens to each one and compares it with the names DVD Fandom lists, and suggests a name when it is clear. Or press Preview or Watch it to see what one is (Safari cannot play .mkv files: use Download and open it in VLC or Infuse), then type the real name and press Save. Plex shows that name, and sorts each into the kind you pick."
+      help="A DVD does not store names for its bonus features, so they are sorted by length and called Trailer 01, Featurette 01 and so on. Try to match the names listens to each one and compares it with the names DVD Fandom lists, and suggests a name when it is clear. Or press Preview or Watch it to see what one is (Safari cannot play .mkv files: use Download and open it in VLC or Infuse), then type the real name and press Save. Plex shows that name, and sorts each into the kind you pick. Extras you remove wait in the Removed tab, where you can put them back."
       hint="Bonus features of movies that are ready to watch."
       badge={unnamed > 0 ? `${unnamed} not named` : undefined}
     >
-      <div className="space-y-6">
-        {data.map((movie) => (
-          <section key={movie.movie}>
-            <h3 className="font-semibold text-gray-900 dark:text-white">
-              {movie.movie}
-            </h3>
-            <Sources
-              movie={movie.movie}
-              enabled={movie.items.some((i) => i.unnamed)}
-            />
-            <MovieExtras movie={movie} />
-          </section>
-        ))}
+      <div role="tablist" className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'name'}
+          className={tabClass(tab === 'name')}
+          onClick={() => setTab('name')}
+        >
+          To name ({movies.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'removed'}
+          className={tabClass(tab === 'removed')}
+          onClick={() => setTab('removed')}
+        >
+          Removed ({removed.length})
+        </button>
+        {tab === 'name' && movies.length > 1 && (
+          <span className="ml-auto flex gap-2">
+            <button
+              type="button"
+              className={tabClass(false)}
+              onClick={() => setAll(true)}
+            >
+              Expand all
+            </button>
+            <button
+              type="button"
+              className={tabClass(false)}
+              onClick={() => setAll(false)}
+            >
+              Collapse all
+            </button>
+          </span>
+        )}
       </div>
+      {tab === 'removed' ? (
+        <RemovedExtras extras={removed} />
+      ) : movies.length === 0 ? (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          No movie has extras left to name.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {movies.map((movie) => (
+            <MovieSection
+              key={movie.movie}
+              movie={movie}
+              open={isOpen(movie)}
+              onToggle={() =>
+                setOpen({ ...openMap, [movie.movie]: !isOpen(movie) })
+              }
+              onShowRemoved={() => setTab('removed')}
+            />
+          ))}
+        </div>
+      )}
     </CollapsibleCard>
   );
 }

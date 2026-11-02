@@ -44,6 +44,8 @@ import {
   discsExtrasMatchHandler,
   discsExtrasDuplicatesHandler,
   discsExtrasRemoveHandler,
+  discsExtrasRemovedHandler,
+  discsExtrasRestoreHandler,
   discsExtrasSourcesHandler,
   discsExtrasMatchStartHandler,
   discsExtrasPreviewHandler,
@@ -270,6 +272,14 @@ const wrappedDiscsExtrasDuplicatesHandler = withErrorHandler(
 const wrappedDiscsExtrasRemoveHandler = withErrorHandler(
   discsExtrasRemoveHandler,
   'DiscsExtrasRemoveHandler',
+);
+const wrappedDiscsExtrasRemovedHandler = withErrorHandler(
+  discsExtrasRemovedHandler,
+  'DiscsExtrasRemovedHandler',
+);
+const wrappedDiscsExtrasRestoreHandler = withErrorHandler(
+  discsExtrasRestoreHandler,
+  'DiscsExtrasRestoreHandler',
 );
 const wrappedDiscsExtrasMatchHandler = withErrorHandler(
   discsExtrasMatchHandler,
@@ -517,6 +527,12 @@ export async function setupRoutes(req: Request): Promise<Response> {
     }
     if (pathname === '/api/discs/extras/remove' && req.method === 'POST') {
       return await wrappedDiscsExtrasRemoveHandler(req, corsHeaders);
+    }
+    if (pathname === '/api/discs/extras/removed' && req.method === 'GET') {
+      return await wrappedDiscsExtrasRemovedHandler(req, corsHeaders);
+    }
+    if (pathname === '/api/discs/extras/restore' && req.method === 'POST') {
+      return await wrappedDiscsExtrasRestoreHandler(req, corsHeaders);
     }
     if (pathname === '/api/discs/extras/match' && req.method === 'GET') {
       return await wrappedDiscsExtrasMatchHandler(req, corsHeaders);

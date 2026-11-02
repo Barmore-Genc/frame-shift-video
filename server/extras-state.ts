@@ -14,7 +14,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { outputFolder } from './disc-state';
 import { EXTRA_FOLDERS, VIDEO } from './disc-contents';
-import type { ExtraItem, ExtraMovie } from '../src/types/discs';
+import type { ExtraItem, ExtraMovie, RemovedExtra } from '../src/types/discs';
 
 /** The names the ripper gives: "Trailer 01 (2 min).mkv". */
 const GENERIC =
@@ -260,4 +260,100 @@ export async function removeExtras(
     }
   }
   return { removed, failed };
+}
+
+/** Where a removed extra is: "_removed/<movie>/<extras folder>/<file>". */
+function locateRemoved(file: string): {
+  movie: string;
+  folder: string;
+  base: string;
+} {
+  const parts = file.split('/');
+  const [root, movie, folder, base] = parts;
+  if (
+    parts.length !== 4 ||
+    root !== REMOVED ||
+    [movie, folder, base].some(
+      (part) => !part || part === '.' || part === '..' || part.startsWith('.'),
+    ) ||
+    !(EXTRA_FOLDERS as readonly string[]).includes(folder!) ||
+    !VIDEO.test(base!)
+  ) {
+    throw new Error('That is not a removed extra');
+  }
+  return { movie: movie!, folder: folder!, base: base! };
+}
+
+/** The extras that were taken out of movies, the movie they came from first. */
+export async function readRemoved(dir: string): Promise<RemovedExtra[]> {
+  const found: RemovedExtra[] = [];
+  for (const movie of await listNames(path.join(dir, REMOVED))) {
+    if (movie.startsWith('.')) continue;
+    for (const folder of EXTRA_FOLDERS) {
+      const where = path.join(dir, REMOVED, movie, folder);
+      for (const file of await listNames(where)) {
+        if (!VIDEO.test(file)) continue;
+        found.push({
+          path: [REMOVED, movie, folder, file].join('/'),
+          movie,
+          folder,
+          name: file.replace(VIDEO, ''),
+        });
+      }
+    }
+  }
+  return found;
+}
+
+/**
+ * Puts removed extras back in their movie, in the extras folder they came from. A name that is
+ * taken again gets "(2)". One whose movie is gone is reported and the rest are still put back.
+ */
+export async function restoreExtras(
+  dir: string,
+  files: unknown,
+): Promise<{
+  restored: string[];
+  failed: { path: string; error: string }[];
+}> {
+  if (!Array.isArray(files) || files.length === 0) {
+    throw new Error('Pick the extras to put back');
+  }
+  if (files.length > MAX_REMOVE) throw new Error('That is too many at once');
+  const output = await outputFolder(dir);
+  const restored: string[] = [];
+  const failed: { path: string; error: string }[] = [];
+  for (const file of new Set(files)) {
+    try {
+      if (typeof file !== 'string')
+        throw new Error('That is not a removed extra');
+      const here = locateRemoved(file);
+      const from = path.join(dir, file);
+      if (!(await fs.stat(from).catch(() => null))?.isFile()) {
+        throw new Error('That extra is not there any more');
+      }
+      let movieDir: string | null = null;
+      for (const parent of [output, '']) {
+        const candidate = path.join(dir, parent, here.movie);
+        if (await isDirectory(candidate)) {
+          movieDir = candidate;
+          break;
+        }
+      }
+      if (!movieDir) throw new Error('That movie is not there any more');
+      const toDir = path.join(movieDir, here.folder);
+      await fs.mkdir(toDir, { recursive: true });
+      await fs.rename(from, path.join(toDir, await freeName(toDir, here.base)));
+      const old = path.join(dir, REMOVED, here.movie);
+      await fs.rmdir(path.join(old, here.folder)).catch(() => {});
+      await fs.rmdir(old).catch(() => {});
+      restored.push(file);
+    } catch (error) {
+      failed.push({
+        path: String(file),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { restored, failed };
 }
