@@ -194,6 +194,45 @@ describe('results from TheTVDB', () => {
   });
 });
 
+describe('every result says which database it is from', () => {
+  const row = (source: string, id: number, size: string) =>
+    [
+      'movie',
+      id,
+      'The Proud Family Movie (2005)',
+      size,
+      'A film.',
+      '',
+      source,
+    ].join('\t');
+
+  test('the same movie from both databases is told apart by label and color, with its own length', async () => {
+    answer = [row('tmdb', 14688, '95 min'), row('tvdb', 14688, '90 min')].join(
+      '\n',
+    );
+    render(
+      <TmdbPicker
+        kind="movie"
+        initialQuery="Proud Family Movie"
+        autoSearch
+        onPick={() => {}}
+      />,
+    );
+    await waitFor(() => expect(names()).toHaveLength(2), slow);
+    const [tmdb, tvdb] = screen.getAllByRole('listitem');
+    expect(tmdb!.textContent).toContain('95 min');
+    expect(tmdb!.textContent).toContain('TMDB');
+    expect(tmdb!.className).toContain('border-l-[#01b4e4]');
+    expect(tmdb!.innerHTML).toContain('bg-[#01b4e4]');
+    expect(tvdb!.textContent).toContain('90 min');
+    expect(tvdb!.textContent).toContain('TVDB');
+    expect(tvdb!.className).toContain('border-l-[#6cd491]');
+    expect(tvdb!.innerHTML).toContain('bg-[#6cd491]');
+    // Both are kept (the same id in two databases is not the same result).
+    expect(names()).toHaveLength(2);
+  });
+});
+
 describe('the "Tell it what the disc is" form', () => {
   const state = {
     available: true,

@@ -43,6 +43,20 @@ export function sourceName(result: TmdbResult): string {
   return result.source === 'tvdb' ? 'TVDB' : 'TMDB';
 }
 
+/**
+ * How a result's database is shown, in the site's own colors: TMDB's cyan and TheTVDB's green.
+ * `badge` is the label's colors and `stripe` the left edge of the result's row. The words stay on
+ * the label, so the color is never the only thing that says where a result is from.
+ */
+export function sourceColors(result: TmdbResult): {
+  badge: string;
+  stripe: string;
+} {
+  return result.source === 'tvdb'
+    ? { badge: 'bg-[#6cd491] text-[#0b1f14]', stripe: 'border-l-[#6cd491]' }
+    : { badge: 'bg-[#01b4e4] text-[#032541]', stripe: 'border-l-[#01b4e4]' };
+}
+
 /** The page of a result on its database, to check it is the one. */
 export function tmdbPage(result: TmdbResult): string {
   return result.source === 'tvdb'

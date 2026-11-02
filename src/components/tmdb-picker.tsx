@@ -3,6 +3,7 @@ import { runDiscCommand } from '@/lib/api-hooks';
 import {
   parseTmdbResults,
   posterUrl,
+  sourceColors,
   sourceName,
   tmdbPage,
 } from '@/lib/tmdb-results';
@@ -176,7 +177,10 @@ export function TmdbPicker({
           {results.map((result) => {
             const poster = posterUrl(result.poster);
             return (
-              <li key={`${result.kind}${result.id}`} className="flex gap-3 p-2">
+              <li
+                key={`${result.source}${result.kind}${result.id}`}
+                className={`flex gap-3 border-l-4 p-2 ${sourceColors(result).stripe}`}
+              >
                 {poster ? (
                   <img
                     src={poster}
@@ -194,6 +198,12 @@ export function TmdbPicker({
                     <span className="text-sm font-normal text-gray-600 dark:text-gray-400">
                       {result.kind === 'tv' ? 'TV · ' : ''}
                       {result.size}
+                    </span>{' '}
+                    <span
+                      className={`rounded px-1.5 py-0.5 align-middle text-xs font-semibold ${sourceColors(result).badge}`}
+                      title={`This result is from ${sourceName(result)}`}
+                    >
+                      {sourceName(result)}
                     </span>
                   </div>
                   <p className="line-clamp-2 text-sm text-gray-600 dark:text-gray-400">
