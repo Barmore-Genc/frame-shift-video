@@ -35,7 +35,7 @@ export function DiscsCard() {
     <div className="bg-white dark:bg-gray-800 rounded-xl border-2 border-gray-200 dark:border-gray-600 p-12 shadow-lg max-w-md w-full text-center">
       <Disc
         size={72}
-        weight="duotone"
+        weight="bold"
         className="neon-icon mx-auto mb-6"
         aria-hidden="true"
       />

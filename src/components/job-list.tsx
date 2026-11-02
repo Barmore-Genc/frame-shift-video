@@ -850,11 +850,7 @@ export function JobList() {
       >
         {jobs.length === 0 ? (
           <div className="text-center py-12">
-            <Tray
-              size={64}
-              weight="duotone"
-              className="neon-icon mx-auto mb-4"
-            />
+            <Tray size={64} weight="bold" className="neon-icon mx-auto mb-4" />
             <p className="text-gray-600 dark:text-gray-400 text-lg">
               {showCleared
                 ? 'No jobs found.'
