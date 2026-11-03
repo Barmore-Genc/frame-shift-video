@@ -5,24 +5,33 @@
  * reached, is left out; the others still count.
  */
 
-import { compareAt, type CompareAnswer } from './extras-eyes';
+import {
+  compareAt,
+  menuAt,
+  type CompareAnswer,
+  type MenuAnswer,
+} from './extras-eyes';
 import { discDbSources } from './discdb';
 import { fandomHint } from './fandom-hints';
 import { kindOf } from './extras-match';
 import type { FandomHint, NameSource } from '../src/types/discs';
 
 const KEPT_MS = 60 * 60 * 1000;
+/** The disc menus are slow the first time: the other lists do not wait longer than this for them. */
+const MENU_WAIT_MS = 25 * 1000;
 
 export interface SourceDeps {
   compare: (title: string, year: number | null) => Promise<CompareAnswer>;
   discdb: (movie: string) => Promise<NameSource[]>;
   fandom: (movie: string) => Promise<FandomHint>;
+  menu: (title: string, year: number | null) => Promise<MenuAnswer>;
 }
 
 const realDeps: SourceDeps = {
   compare: (title, year) => compareAt(title, year),
   discdb: (movie) => discDbSources(movie),
   fandom: (movie) => fandomHint(movie),
+  menu: (title, year) => menuAt(title, year),
 };
 
 /** "Teacher's Pet (2004)" -> its title and year. */
@@ -53,6 +62,28 @@ export function fromCompare(answer: CompareAnswer): NameSource[] {
   }));
 }
 
+/**
+ * What the menus of the movie's own disc say: every button that plays one title, with that title's
+ * exact length. A "Play All" button is marked so that it is explained, not named.
+ */
+export function fromMenu(answer: MenuAnswer): NameSource[] {
+  if (!answer.found || !answer.entries?.length) return [];
+  return [
+    {
+      source: 'DVD menu',
+      page: `The menus of the disc image ${answer.disc ?? ''}`.trim(),
+      url: '',
+      features: answer.entries.map((entry) => ({
+        text: entry.name,
+        depth: 1,
+        seconds: entry.seconds,
+        playAll: entry.play_all || undefined,
+        kind: kindOf(entry.menu),
+      })),
+    },
+  ];
+}
+
 export function fromFandom(hint: FandomHint): NameSource[] {
   if (!hint.found || !hint.page || !hint.url) return [];
   return [
@@ -81,6 +112,7 @@ export async function nameSources(
   movie: string,
   deps: SourceDeps = realDeps,
   now: number = Date.now(),
+  menuWaitMs: number = MENU_WAIT_MS,
 ): Promise<NameSource[]> {
   const hit = kept.get(movie);
   if (hit && now - hit.at < KEPT_MS) return hit.sources;
@@ -91,12 +123,29 @@ export async function nameSources(
       failed = true;
       return empty;
     });
-  const [compare, discdb, fandom] = await Promise.all([
+  // The first read of a disc's menus can take a minute: not waited for, and not remembered as empty,
+  // so the next look finds it done.
+  const menuIn = async (work: Promise<NameSource[]>): Promise<NameSource[]> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<NameSource[]>((resolve) => {
+      timer = setTimeout(() => {
+        failed = true;
+        resolve([]);
+      }, menuWaitMs);
+    });
+    try {
+      return await Promise.race([work, late]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const [compare, discdb, fandom, menu] = await Promise.all([
     guard(deps.compare(title, year).then(fromCompare), [] as NameSource[]),
     guard(deps.discdb(movie), [] as NameSource[]),
     guard(deps.fandom(movie).then(fromFandom), [] as NameSource[]),
+    menuIn(guard(deps.menu(title, year).then(fromMenu), [] as NameSource[])),
   ]);
-  const sources = [...compare, ...discdb, ...fandom];
+  const sources = [...menu, ...compare, ...discdb, ...fandom];
   // A database that could not be asked is tried again next time, not remembered as having nothing.
   if (!failed) kept.set(movie, { at: now, sources });
   return sources;
