@@ -392,6 +392,28 @@ describe('commands', () => {
     expect(commandLines(base)).not.toContain('replace=1');
   });
 
+  test('a rename sets the folder that has the name aside only when it is true', () => {
+    const base = {
+      action: 'rename',
+      old: 'The Proud Famil',
+      new: 'The Proud Family Movie (2005) {tmdb-14688}',
+    } as const;
+    expect(commandLines({ ...base, replace: true })).toEqual([
+      'action=rename',
+      'old=The Proud Famil',
+      'new=The Proud Family Movie (2005) {tmdb-14688}',
+      'replace=1',
+    ]);
+    expect(commandLines({ ...base, replace: false })).not.toContain(
+      'replace=1',
+    );
+    expect(commandLines(base)).toEqual([
+      'action=rename',
+      'old=The Proud Famil',
+      'new=The Proud Family Movie (2005) {tmdb-14688}',
+    ]);
+  });
+
   test('each request becomes the lines the host reads', () => {
     expect(commandLines({ action: 'eject' })).toEqual(['action=eject']);
     expect(

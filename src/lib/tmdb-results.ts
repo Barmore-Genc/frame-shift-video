@@ -57,6 +57,17 @@ export function sourceColors(result: TmdbResult): {
     : { badge: 'bg-[#01b4e4] text-[#032541]', stripe: 'border-l-[#01b4e4]' };
 }
 
+/**
+ * The folder name for a movie matched to a result: "Title (Year)", with Plex's id tag after it when
+ * asked and the result is TMDB's ("Title (Year) {tmdb-123}"). Plex reads TMDB and IMDb ids in a
+ * movie's name, not TheTVDB's, so a TVDB result gets no tag.
+ */
+export function matchedName(result: TmdbResult, withId: boolean): string {
+  return withId && result.source === 'tmdb'
+    ? `${result.name} {tmdb-${result.id}}`
+    : result.name;
+}
+
 /** The page of a result on its database, to check it is the one. */
 export function tmdbPage(result: TmdbResult): string {
   return result.source === 'tvdb'

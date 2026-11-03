@@ -838,6 +838,7 @@ export function commandLines(command: DiscCommand): string[] {
         'action=rename',
         `old=${cleanFolder(command.old)}`,
         `new=${cleanName(command.new)}`,
+        ...(command.replace === true ? ['replace=1'] : []),
       ];
     case 'match':
       return ['action=match', `old=${cleanFolder(command.old)}`];
