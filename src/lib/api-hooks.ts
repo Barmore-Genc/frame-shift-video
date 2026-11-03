@@ -51,6 +51,7 @@ import {
   setSubtitlesAuto,
   restoreSubtitles,
   removeSubtitleTrack,
+  removeSubtitlePictures,
   dismissSubtitles,
   cleanSubtitles,
   clearOldCopies,
@@ -434,6 +435,18 @@ export function useRemoveSubtitleTrack() {
   return useMutation({
     mutationFn: ({ path, track }: { path: string; track: number }) =>
       removeSubtitleTrack(path, track),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.subtitles }),
+  });
+}
+
+/**
+ * Hook to take the picture subtitles that could not be read out of a file, or out of every file
+ */
+export function useRemoveSubtitlePictures() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: removeSubtitlePictures,
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: queryKeys.subtitles }),
   });

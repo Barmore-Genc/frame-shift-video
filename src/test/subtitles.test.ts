@@ -10,6 +10,7 @@ import {
   readSubtitlesState,
   requestClean,
   requestClearOldCopies,
+  requestDropPictures,
   requestDropTrack,
   requestRestore,
   requestSubtitles,
@@ -595,6 +596,93 @@ describe('taking a subtitle track out', () => {
     expect(await fs.readdir(path.join(dir, '_subs', 'queue'))).toEqual([
       'abc.req',
     ]);
+  });
+});
+
+describe('taking the problem picture subtitles out', () => {
+  const REBOUND_FILE = 'Rebound (2005)/Rebound (2005).mkv';
+  const picture = {
+    language: 'spa',
+    codec: 'picture',
+    name: '',
+    default: false,
+    forced: false,
+  };
+  const text = { ...picture, codec: 'S_TEXT/UTF8', name: 'English' };
+
+  async function writeStuckIndex() {
+    await write(
+      '_subs/index.json',
+      JSON.stringify({
+        updated: 1,
+        files: [
+          {
+            path: REBOUND_FILE,
+            size: 1,
+            mtime: 1,
+            tracks: [picture, picture, text],
+            unreadable: true,
+          },
+          { path: DUMA, size: 1, mtime: 1, tracks: [picture] },
+          { path: HERO, size: 1, mtime: 1, tracks: [text] },
+        ],
+      }),
+    );
+  }
+
+  const queued = async () =>
+    (await fs.readdir(path.join(dir, '_subs', 'queue'))).sort();
+  const nameOf = (file: string) =>
+    createHash('md5')
+      .update(`droppictures:${file}`)
+      .digest('hex')
+      .slice(0, 12) + '.req';
+
+  test('writes a request the converter will recognise, named as it names it', async () => {
+    await writeStuckIndex();
+    expect(await requestDropPictures(dir, { path: REBOUND_FILE })).toBe(1);
+    expect(await queued()).toEqual([nameOf(REBOUND_FILE)]);
+    const written = await fs.readFile(
+      path.join(dir, '_subs', 'queue', nameOf(REBOUND_FILE)),
+      'utf8',
+    );
+    expect(written).toContain('action=droppictures\n');
+    expect(written).toContain(`path=${REBOUND_FILE}\n`);
+    expect(written).not.toContain('track=');
+  });
+
+  test('"all" asks only for the files whose pictures could not be read', async () => {
+    await writeStuckIndex();
+    expect(await requestDropPictures(dir, { all: true })).toBe(1);
+    expect(await queued()).toEqual([nameOf(REBOUND_FILE)]);
+  });
+
+  test('"all" leaves out a file that is being worked on', async () => {
+    await writeStuckIndex();
+    await write(
+      '_subs/queue/abc.req',
+      `action=recheck\npath=${REBOUND_FILE}\nat=5\n`,
+    );
+    expect(await requestDropPictures(dir, { all: true })).toBe(0);
+    expect(await queued()).toEqual(['abc.req']);
+  });
+
+  test('refuses a file with no pictures, one that is busy, and one that is not listed', async () => {
+    await writeStuckIndex();
+    await expect(requestDropPictures(dir, { path: HERO })).rejects.toThrow(
+      'no picture subtitles',
+    );
+    await expect(
+      requestDropPictures(dir, { path: 'Nope/x.mkv' }),
+    ).rejects.toThrow('not in the list');
+    await write(
+      '_subs/queue/abc.req',
+      `action=recheck\npath=${REBOUND_FILE}\nat=5\n`,
+    );
+    await expect(
+      requestDropPictures(dir, { path: REBOUND_FILE }),
+    ).rejects.toThrow('being worked on');
+    expect(await queued()).toEqual(['abc.req']);
   });
 });
 

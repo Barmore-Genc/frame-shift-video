@@ -6,6 +6,7 @@ import {
   useConvertSubtitles,
   useDismissSubtitles,
   useRemoveSubtitleTrack,
+  useRemoveSubtitlePictures,
   useRestoreSubtitles,
   useSetSubtitlesAuto,
   useSubtitles,
@@ -70,6 +71,7 @@ function FileRow({
   onConvert,
   onRemove,
   onRemoveTrack,
+  onRemovePictures,
 }: {
   file: SubtitleFile;
   busy: boolean;
@@ -77,6 +79,8 @@ function FileRow({
   onRemove: () => void;
   /** Shown only when the full list is open: takes one subtitle track out of the file */
   onRemoveTrack?: (index: number) => void;
+  /** Takes out the picture subtitles that could not be read */
+  onRemovePictures?: () => void;
 }) {
   const waiting = file.status !== null;
   return (
@@ -150,9 +154,21 @@ function FileRow({
           )}
         </div>
       ) : file.unreadable ? (
-        <span className="max-w-xs text-sm text-amber-700 dark:text-amber-400">
-          Some picture subtitles could not be read, so they stay as pictures
-        </span>
+        <div className="flex max-w-xs flex-col items-start gap-2">
+          <span className="text-sm text-amber-700 dark:text-amber-400">
+            Some picture subtitles could not be read, so they stay as pictures
+          </span>
+          {onRemovePictures && (
+            <button
+              type="button"
+              className={SMALL}
+              disabled={waiting}
+              onClick={onRemovePictures}
+            >
+              Remove the problem subtitles
+            </button>
+          )}
+        </div>
       ) : (
         <span className="text-sm text-green-700 dark:text-green-400">
           <span className="inline-flex items-center gap-1">
@@ -183,6 +199,7 @@ export function SubtitlesSection() {
   const dismiss = useDismissSubtitles();
   const clean = useCleanSubtitles();
   const removeTrack = useRemoveSubtitleTrack();
+  const removePictures = useRemoveSubtitlePictures();
   const clear = useClearOldCopies();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -322,14 +339,47 @@ export function SubtitlesSection() {
             </span>
           </div>
           {unreadable.length > 0 && (
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              {unreadable.length === 1
-                ? 'Some picture subtitles in this movie could not be read'
-                : `Some picture subtitles in these ${unreadable.length} movies could not be read`}
-              , so they stay as pictures:{' '}
-              {unreadable.map((f) => movieName(f.path)).join(', ')}. Press “Show
-              all” below to take them out.
-            </p>
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
+              <p className="text-sm text-gray-900 dark:text-white">
+                {unreadable.length === 1
+                  ? 'Some picture subtitles in this movie could not be read'
+                  : `Some picture subtitles in these ${unreadable.length} movies could not be read`}
+                , so they stay as pictures:{' '}
+                {unreadable.map((f) => movieName(f.path)).join(', ')}.
+              </p>
+              <button
+                type="button"
+                className={`${SMALL} mt-2`}
+                disabled={
+                  removePictures.isPending ||
+                  unreadable.every((f) => f.status !== null)
+                }
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `Take the picture subtitles that could not be read out of ${unreadable.length} movie${unreadable.length === 1 ? '' : 's'}? Text subtitles stay. Each old file is kept until you delete it.`,
+                    )
+                  ) {
+                    removePictures.mutate({ all: true });
+                  }
+                }}
+              >
+                Remove the problem subtitles
+              </button>
+              {removePictures.isSuccess && removePictures.data.queued > 0 && (
+                <p className="mt-2 text-sm text-green-700 dark:text-green-400">
+                  Asked. It starts within a minute.
+                </p>
+              )}
+              {removePictures.error && (
+                <p
+                  role="alert"
+                  className="mt-2 text-sm text-red-600 dark:text-red-400"
+                >
+                  {removePictures.error.message}
+                </p>
+              )}
+            </div>
           )}
           {state.files.some((f) => f.needsClean) && (
             <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
@@ -401,6 +451,15 @@ export function SubtitlesSection() {
                   busy={convert.isPending}
                   onConvert={() => convert.mutate({ path: file.path })}
                   onRemove={() => dismiss.mutate({ queued: file.path })}
+                  onRemovePictures={() => {
+                    if (
+                      window.confirm(
+                        `Take the picture subtitles that could not be read out of ${movieName(file.path)}? Text subtitles stay. The old file is kept until you delete it.`,
+                      )
+                    ) {
+                      removePictures.mutate({ path: file.path });
+                    }
+                  }}
                   onRemoveTrack={
                     showAll
                       ? (index) => {
