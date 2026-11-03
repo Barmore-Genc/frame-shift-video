@@ -31,18 +31,16 @@ async function samePicture(
   return true;
 }
 
-/**
- * The groups of extras of `movie` that are copies of each other (each group has two or more paths, in
- * the order the page lists them). Extras that cannot be measured are left out.
- */
-export async function findDuplicates(
+export type Measured = { path: string; real: string; seconds: number };
+
+/** The extras of `movie` in the order the page lists them, with their files and lengths. Extras that cannot be measured are left out. */
+export async function measureExtras(
   dir: string,
   movie: string,
-  sum: Sum = frameSum,
-): Promise<string[][]> {
+): Promise<Measured[]> {
   const found = (await readExtras(dir)).find((m) => m.movie === movie);
   if (!found) throw new Error('That movie has no extras');
-  const measured: { path: string; real: string; seconds: number }[] = [];
+  const measured: Measured[] = [];
   for (const item of found.items) {
     try {
       const real = await extraFilePath(dir, item.path);
@@ -55,6 +53,19 @@ export async function findDuplicates(
       // Not measurable: not compared.
     }
   }
+  return measured;
+}
+
+/**
+ * The groups of extras of `movie` that are copies of each other (each group has two or more paths, in
+ * the order the page lists them). Extras that cannot be measured are left out.
+ */
+export async function findDuplicates(
+  dir: string,
+  movie: string,
+  sum: Sum = frameSum,
+): Promise<string[][]> {
+  const measured = await measureExtras(dir, movie);
   const groups: string[][] = [];
   const used = new Set<string>();
   for (const first of measured) {

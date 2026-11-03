@@ -10,7 +10,7 @@ const FRAMES = 8;
 const TIMEOUT_MS = 20000;
 const MAX_JPEG = 4 * 1024 * 1024;
 
-function run(
+export function run(
   command: string,
   args: string[],
   encoding: 'utf8' | 'buffer',

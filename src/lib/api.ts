@@ -920,17 +920,27 @@ export async function fetchExtraSources(movie: string): Promise<NameSource[]> {
   return ((await response.json()) as { sources: NameSource[] }).sources;
 }
 
+/** An extra that is other extras played one after another, with those parts in order */
+export type ExtraReel = { path: string; parts: string[] };
+
 /**
- * Groups of a movie's extras that are the same video (same length and same pictures)
+ * Groups of a movie's extras that are the same video (same length and same pictures), and its
+ * reels: extras that are other extras played in a row
  */
-export async function fetchExtraDuplicates(movie: string): Promise<string[][]> {
+export async function fetchExtraDuplicates(
+  movie: string,
+): Promise<{ groups: string[][]; reels: ExtraReel[] }> {
   const response = await fetch(
     `${API_BASE}/discs/extras/duplicates?${new URLSearchParams({ movie })}`,
   );
   if (!response.ok) {
     throw await discError(response, 'Failed to look for copies');
   }
-  return ((await response.json()) as { groups: string[][] }).groups;
+  const body = (await response.json()) as {
+    groups: string[][];
+    reels?: ExtraReel[];
+  };
+  return { groups: body.groups, reels: body.reels ?? [] };
 }
 
 /**
