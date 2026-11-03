@@ -25,7 +25,7 @@ import {
   renameExtra,
   restoreExtras,
 } from '../extras-state';
-import { findDuplicates } from '../extras-duplicates';
+import { findDuplicates, listenerSum } from '../extras-duplicates';
 import { findReels } from '../extras-reels';
 import { frameJpeg, previewTimes, videoSeconds } from '../extras-preview';
 import { fandomHint } from '../fandom-hints';
@@ -457,7 +457,11 @@ export async function discsExtrasDuplicatesHandler(
   return asBadRequest(corsHeaders, async () =>
     json(
       {
-        groups: await findDuplicates(discsDir(), movie),
+        groups: await findDuplicates(
+          discsDir(),
+          movie,
+          process.env.EXTRAS_EYES_URL ? listenerSum : undefined,
+        ),
         reels: await findReels(discsDir(), movie),
       },
       200,

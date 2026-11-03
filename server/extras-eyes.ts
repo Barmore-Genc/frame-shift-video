@@ -129,3 +129,41 @@ export async function menuAt(
   }
   return body;
 }
+
+/**
+ * Small grey pictures of the extra at `path`, one a second from `start` (at most `count`, so fewer
+ * near the end), as the listener makes them. Frame Shift's own ffmpeg cannot decode the library's
+ * 10-bit HEVC, so the pictures for comparing extras come from the listener.
+ */
+export async function thumbsOf(
+  path: string,
+  start: number,
+  count: number,
+  width: number,
+  height: number,
+  fetcher: Fetcher = fetch,
+  base: string | undefined = process.env.EXTRAS_EYES_URL,
+): Promise<Uint8Array[]> {
+  if (!base) throw new ListenerUnavailable('The listener is not set up here');
+  let response: Response;
+  try {
+    response = await fetcher(`${base.replace(/\/$/, '')}/thumbs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, start, count, width, height }),
+      signal: AbortSignal.timeout(60 * 1000),
+    });
+  } catch {
+    throw new ListenerUnavailable('The listener could not be reached');
+  }
+  const body = (await response.json().catch(() => null)) as {
+    frames?: string[];
+    error?: string;
+  } | null;
+  if (!response.ok || !body || !Array.isArray(body.frames)) {
+    throw new Error(body?.error ?? 'The listener could not make pictures');
+  }
+  return body.frames.map(
+    (frame) => new Uint8Array(Buffer.from(frame, 'base64')),
+  );
+}

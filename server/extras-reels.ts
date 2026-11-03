@@ -8,7 +8,7 @@
  */
 
 import { measureExtras, type Measured } from './extras-duplicates';
-import { run } from './extras-preview';
+import { thumbsOf } from './extras-eyes';
 
 /** The parts of a reel may add up to this much (a share of the reel) off its length: menus trim a little. */
 const LENGTH_SHARE = 0.015;
@@ -26,42 +26,19 @@ const FOUND_SHARE = 0.6;
 
 export type Reel = { path: string; parts: string[] };
 
-/** Small grey pictures of a video, one a second from `from`: `count` of them. */
+/**
+ * Small grey pictures of an extra (its path under the DVDs folder), one a second from `from`:
+ * `count` of them.
+ */
 export type Look = (
-  file: string,
+  path: string,
   from: number,
   count: number,
 ) => Promise<Uint8Array[]>;
 
-export const looks: Look = async (file, from, count) => {
-  const out = (await run(
-    'ffmpeg',
-    [
-      '-v',
-      'error',
-      '-ss',
-      String(Math.max(0, from)),
-      '-i',
-      file,
-      '-t',
-      String(count),
-      '-an',
-      '-sn',
-      '-vf',
-      `fps=1,scale=${WIDTH}:${HEIGHT},format=gray`,
-      '-f',
-      'rawvideo',
-      '-',
-    ],
-    'buffer',
-  )) as Buffer;
-  const size = WIDTH * HEIGHT;
-  const pictures: Uint8Array[] = [];
-  for (let at = 0; at + size <= out.length; at += size) {
-    pictures.push(out.subarray(at, at + size));
-  }
-  return pictures;
-};
+/** The pictures come from the listener (see extras-eyes.ts). */
+export const looks: Look = (path, from, count) =>
+  thumbsOf(path, Math.max(0, from), count, WIDTH, HEIGHT);
 
 function difference(a: Uint8Array, b: Uint8Array): number {
   let total = 0;
@@ -126,12 +103,12 @@ async function partsAreIn(
     let matched = false;
     for (const moment of PART_MOMENTS) {
       try {
-        const [mine] = await look(part.real, part.seconds * moment, 1);
+        const [mine] = await look(part.path, part.seconds * moment, 1);
         if (!mine) continue;
         // Where it should be in the reel, as a place in the pictures taken from `from`.
         const expected = start + part.seconds * moment * scale;
         const from = Math.max(0, expected - WINDOW_SECONDS);
-        const inReel = await look(reel.real, from, 2 * WINDOW_SECONDS + 1);
+        const inReel = await look(reel.path, from, 2 * WINDOW_SECONDS + 1);
         const near = Math.round(expected - from);
         for (let i = near - WINDOW_SECONDS; i <= near + WINDOW_SECONDS; i++) {
           const theirs = inReel[i];
