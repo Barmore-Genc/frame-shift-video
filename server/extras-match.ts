@@ -229,6 +229,10 @@ const clock = (seconds: number) =>
 
 /** How far a length may be from a listed one and still be it, and how far and still be close. */
 export const CLEAR_SECONDS = 6;
+/** A length read from the disc's own menu is exact, so it only needs a small margin */
+export const EXACT_SECONDS = 1;
+const slack = (n: Candidate) =>
+  n.sources.includes('DVD menu') ? EXACT_SECONDS : CLEAR_SECONDS;
 export const NEAR_SECONDS = 15;
 
 type Scored = {
@@ -343,8 +347,7 @@ export function matchExtra(
       : names
           .filter(
             (n) =>
-              n.seconds !== null &&
-              Math.abs(seconds - n.seconds) <= CLEAR_SECONDS,
+              n.seconds !== null && Math.abs(seconds - n.seconds) <= slack(n),
           )
           .sort(
             (a, b) =>
@@ -484,7 +487,7 @@ export function matchMovie(
           (o) =>
             o.path !== self &&
             o.seconds !== null &&
-            Math.abs(o.seconds - candidate.seconds!) <= CLEAR_SECONDS,
+            Math.abs(o.seconds - candidate.seconds!) <= slack(candidate),
         ).length;
   const out: Record<string, Suggestion> = {};
   for (const item of items)
