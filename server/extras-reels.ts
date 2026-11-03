@@ -90,7 +90,25 @@ export function candidateRuns(
   return runs.sort((a, b) => b.length - a.length);
 }
 
-/** Whether most of the parts' pictures are in the reel, where each part should be. */
+/** A Look that asks the same question once. */
+function remembered(look: Look): Look {
+  const answers = new Map<string, Promise<Uint8Array[]>>();
+  return (file, from, count) => {
+    const key = `${file}|${from}|${count}`;
+    let answer = answers.get(key);
+    if (!answer) {
+      answer = look(file, from, count);
+      answers.set(key, answer);
+    }
+    return answer;
+  };
+}
+
+/**
+ * Whether most of the parts' pictures are in the reel, where each part should be. Looking at a
+ * reel is slow, so it stops as soon as the answer cannot change: enough parts found, or too many
+ * missing, and each part is looked for at one moment after another until it is found.
+ */
 async function partsAreIn(
   reel: Measured,
   parts: Measured[],
@@ -98,25 +116,23 @@ async function partsAreIn(
 ): Promise<boolean> {
   const total = parts.reduce((sum, p) => sum + p.seconds, 0);
   const scale = reel.seconds / total;
-  let before = 0;
+  const needed = Math.max(2, Math.ceil(parts.length * FOUND_SHARE));
   let found = 0;
+  let missed = 0;
+  let before = 0;
   for (const part of parts) {
     const start = before * scale;
     before += part.seconds;
-    try {
-      const from = Math.max(0, start - WINDOW_SECONDS);
-      const inReel = await look(
-        reel.real,
-        from,
-        2 * WINDOW_SECONDS + part.seconds * scale,
-      );
-      let matched = false;
-      for (const moment of PART_MOMENTS) {
-        const at = part.seconds * moment;
-        const [mine] = await look(part.real, at, 1);
+    let matched = false;
+    for (const moment of PART_MOMENTS) {
+      try {
+        const [mine] = await look(part.real, part.seconds * moment, 1);
         if (!mine) continue;
         // Where it should be in the reel, as a place in the pictures taken from `from`.
-        const near = Math.round(start + at * scale - from);
+        const expected = start + part.seconds * moment * scale;
+        const from = Math.max(0, expected - WINDOW_SECONDS);
+        const inReel = await look(reel.real, from, 2 * WINDOW_SECONDS + 1);
+        const near = Math.round(expected - from);
         for (let i = near - WINDOW_SECONDS; i <= near + WINDOW_SECONDS; i++) {
           const theirs = inReel[i];
           if (theirs && difference(mine, theirs) <= SAME_PICTURE) {
@@ -124,14 +140,17 @@ async function partsAreIn(
             break;
           }
         }
-        if (matched) break;
+      } catch {
+        // A picture that cannot be read is not found.
       }
-      if (matched) found++;
-    } catch {
-      // A picture that cannot be read is not found.
+      if (matched) break;
     }
+    if (matched) found++;
+    else missed++;
+    if (found >= needed) return true;
+    if (missed > parts.length - needed) return false;
   }
-  return found >= 2 && found >= Math.ceil(parts.length * FOUND_SHARE);
+  return false;
 }
 
 /**
@@ -141,13 +160,16 @@ async function partsAreIn(
 export async function findReels(
   dir: string,
   movie: string,
-  look: Look = looks,
+  asked: Look = looks,
 ): Promise<Reel[]> {
+  const look = remembered(asked);
   const measured = await measureExtras(dir, movie);
   const reels: Reel[] = [];
   const parted = new Set<string>();
-  for (const reel of measured) {
-    if (reel.seconds < MIN_REEL_SECONDS) continue;
+  // The longest first: what a reel is made of is not looked at as a reel of its own.
+  const longestFirst = [...measured].sort((a, b) => b.seconds - a.seconds);
+  for (const reel of longestFirst) {
+    if (reel.seconds < MIN_REEL_SECONDS || parted.has(reel.path)) continue;
     const others = measured.filter(
       (m) => m !== reel && m.seconds < reel.seconds,
     );
@@ -159,8 +181,5 @@ export async function findReels(
       }
     }
   }
-  // A reel of reels is not a reel of its parts: the biggest is the copy, the rest are parts.
-  return reels.filter(
-    (r) => !reels.some((o) => o !== r && o.parts.includes(r.path)),
-  );
+  return reels;
 }
