@@ -210,6 +210,7 @@ function ExtraRow({
   selected,
   onToggle,
   copyOf,
+  reelOf,
 }: {
   item: ExtraItem;
   movie: string;
@@ -218,6 +219,8 @@ function ExtraRow({
   onToggle: () => void;
   /** The other extras this one is the same video as (same length, same pictures) */
   copyOf: string[];
+  /** When this extra is other extras played one after another, those extras in order */
+  reelOf: string[];
 }) {
   const rename = useRenameDiscExtra();
   const removeOne = useRemoveExtras();
@@ -265,6 +268,15 @@ function ExtraRow({
         <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
           The same video as {copyOf.map((n) => `“${n}”`).join(' and ')}: the
           same length and the same pictures.
+        </p>
+      )}
+      {reelOf.length > 0 && (
+        <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
+          This is {reelOf.length} extras played one after another (
+          {reelOf.length > 3
+            ? `“${reelOf[0]}” to “${reelOf[reelOf.length - 1]}”`
+            : reelOf.map((n) => `“${n}”`).join(', ')}
+          ), so it is a second copy of them.
         </p>
       )}
       <p className="mt-1 text-sm">
@@ -451,7 +463,8 @@ function MovieExtras({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const anyUnnamed = movie.items.some((i) => i.unnamed);
   const paths = movie.items.map((i) => i.path);
-  const groups = duplicates.data ?? [];
+  const groups = duplicates.data?.groups ?? [];
+  const reels = duplicates.data?.reels ?? [];
   const nameOf = (path: string) =>
     movie.items.find((i) => i.path === path)?.name ?? path;
   // Of each group of copies, the one to keep: a named one if there is one, else the first.
@@ -462,6 +475,9 @@ function MovieExtras({
       ) ?? group[0]!;
     return group.filter((p) => p !== keep);
   });
+  // A reel is the copy: its parts are the ones to keep, because each can be named.
+  for (const reel of reels)
+    if (!copies.includes(reel.path)) copies.push(reel.path);
   const count = paths.filter((p) => selected.has(p)).length;
   const toggle = (path: string) =>
     setSelected((now) => {
@@ -565,6 +581,9 @@ function MovieExtras({
                 .find((g) => g.includes(item.path))
                 ?.filter((p) => p !== item.path)
                 .map(nameOf) ?? []
+            }
+            reelOf={
+              reels.find((r) => r.path === item.path)?.parts.map(nameOf) ?? []
             }
           />
         ))}

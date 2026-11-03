@@ -39,6 +39,7 @@ let previewFails: boolean;
 let matchState: unknown;
 let matchStarted: string[];
 let dupGroups: string[][];
+let dupReels: { path: string; parts: string[] }[];
 let removed: string[][];
 let removedList: unknown[];
 let restored: string[][];
@@ -55,6 +56,7 @@ beforeEach(() => {
   matchState = null;
   matchStarted = [];
   dupGroups = [];
+  dupReels = [];
   removed = [];
   removedList = [];
   restored = [];
@@ -68,7 +70,9 @@ beforeEach(() => {
   sources = [];
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
     if (String(url).includes('/discs/extras/duplicates')) {
-      return new Response(JSON.stringify({ groups: dupGroups }));
+      return new Response(
+        JSON.stringify({ groups: dupGroups, reels: dupReels }),
+      );
     }
     if (String(url).includes('/discs/extras/removed')) {
       return new Response(JSON.stringify({ extras: removedList }));
@@ -753,6 +757,64 @@ describe('the "Name the extras" section', () => {
     ).toBeTruthy();
     click('Select copies (1)');
     expect(await checked()).toEqual([true, false]);
+  });
+
+  test('an extra that is the others played in a row is pointed out, and Select copies picks only it', async () => {
+    const at = (name: string) => `_converted/Duma (2005)/Other/${name}.mkv`;
+    const names = ['Extra 01 (19 min)', 'One', 'Two', 'Three', 'Four'];
+    movieList = [
+      {
+        movie: 'Duma (2005)',
+        items: names.map((name, i) => ({
+          path: at(name),
+          folder: 'Other',
+          name,
+          unnamed: i === 0,
+        })),
+      },
+    ];
+    dupReels = [{ path: at(names[0]!), parts: names.slice(1).map(at) }];
+    page();
+    expect(
+      await screen.findByText(
+        /This is 4 extras played one after another \(“One” to “Four”\), so it is a second copy of them\./,
+      ),
+    ).toBeTruthy();
+    click('Select copies (1)');
+    const boxes = await Promise.all(
+      names.map(
+        async (name) =>
+          (
+            (await screen.findByRole('checkbox', {
+              name: `Select the extra ${name} in Duma (2005)`,
+            })) as HTMLInputElement
+          ).checked,
+      ),
+    );
+    expect(boxes).toEqual([true, false, false, false, false]);
+  });
+
+  test('a reel of three or fewer names its parts', async () => {
+    const at = (name: string) => `_converted/Duma (2005)/Other/${name}.mkv`;
+    const names = ['Extra 01 (5 min)', 'One', 'Two', 'Three'];
+    movieList = [
+      {
+        movie: 'Duma (2005)',
+        items: names.map((name, i) => ({
+          path: at(name),
+          folder: 'Other',
+          name,
+          unnamed: i === 0,
+        })),
+      },
+    ];
+    dupReels = [{ path: at(names[0]!), parts: names.slice(1).map(at) }];
+    page();
+    expect(
+      await screen.findByText(
+        /This is 3 extras played one after another \(“One”, “Two”, “Three”\)/,
+      ),
+    ).toBeTruthy();
   });
 
   test('with no copies, Select copies is not offered', async () => {

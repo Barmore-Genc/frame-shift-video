@@ -26,6 +26,7 @@ import {
   restoreExtras,
 } from '../extras-state';
 import { findDuplicates } from '../extras-duplicates';
+import { findReels } from '../extras-reels';
 import { frameJpeg, previewTimes, videoSeconds } from '../extras-preview';
 import { fandomHint } from '../fandom-hints';
 import { matchState, startMatch } from '../extras-match-job';
@@ -442,7 +443,8 @@ export async function discsExtrasSourcesHandler(
 
 /**
  * GET /api/discs/extras/duplicates?movie=Name (Year)
- * Groups of that movie's extras that are the same video (same length and same pictures).
+ * Groups of that movie's extras that are the same video (same length and same pictures), and its
+ * reels: extras that are other extras played in a row (see extras-reels.ts).
  */
 export async function discsExtrasDuplicatesHandler(
   req: Request,
@@ -453,7 +455,14 @@ export async function discsExtrasDuplicatesHandler(
     return json({ error: 'movie is needed' }, 400, corsHeaders);
   }
   return asBadRequest(corsHeaders, async () =>
-    json({ groups: await findDuplicates(discsDir(), movie) }, 200, corsHeaders),
+    json(
+      {
+        groups: await findDuplicates(discsDir(), movie),
+        reels: await findReels(discsDir(), movie),
+      },
+      200,
+      corsHeaders,
+    ),
   );
 }
 
