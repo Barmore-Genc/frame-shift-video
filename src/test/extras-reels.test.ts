@@ -201,6 +201,59 @@ describe('finding reels', () => {
     expect(await findReels(dir, MOVIE, oneAt(75))).toEqual([]);
   });
 
+  test('the reel is looked at no more than it takes to be sure', async () => {
+    await place(REEL, 'reel.mkv');
+    await place(P1, 'p1.mkv');
+    await place(P2, 'p2.mkv');
+    await place(P3, 'p3.mkv');
+    const asked = { reel: 0, part: 0 };
+    const picture =
+      (value: number): Look =>
+      async (file) => {
+        if (file.endsWith('Extra 1.mkv')) {
+          asked.reel++;
+          return Array.from({ length: 80 }, () =>
+            new Uint8Array(768).fill(200),
+          );
+        }
+        asked.part++;
+        return [new Uint8Array(768).fill(value)];
+      };
+    // Every part is in it: the first two parts say so, and the third is not looked at (a look at the reel would be new).
+    expect(await findReels(dir, MOVIE, picture(200))).toHaveLength(1);
+    // (The first two parts are near the start, so one look at the reel serves both.)
+    expect(asked).toEqual({ reel: 1, part: 2 });
+    // None is: the first two parts, each at its three moments, say so.
+    asked.reel = asked.part = 0;
+    expect(await findReels(dir, MOVIE, picture(50))).toEqual([]);
+    expect(asked).toEqual({ reel: 1, part: 6 });
+  });
+
+  test('what a reel is made of is not looked at as a reel of its own', async () => {
+    // The reel is 48 + 40 + 32 s. The 40 s part is also the 12 and 28 s extras together, which
+    // would make it a reel of those two if it were looked at.
+    for (const [name, seconds] of [
+      ['r', 120],
+      ['q1', 12],
+      ['q2', 28],
+      ['b1', 48],
+      ['b2', 40],
+      ['b3', 32],
+    ] as const) {
+      color(path.join(sample, `${name}.mkv`), '0x646464', seconds);
+    }
+    await place(extra(1), 'r.mkv');
+    await place(extra(2), 'q1.mkv');
+    await place(extra(3), 'q2.mkv');
+    await place(extra(4), 'b1.mkv');
+    await place(extra(5), 'b2.mkv');
+    await place(extra(6), 'b3.mkv');
+    const every: Look = async () => [new Uint8Array(768).fill(100)];
+    expect(await findReels(dir, MOVIE, every)).toEqual([
+      { path: extra(1), parts: [extra(4), extra(5), extra(6)] },
+    ]);
+  });
+
   test('a picture that cannot be read is not found', async () => {
     await place(REEL, 'reel.mkv');
     await place(P1, 'p1.mkv');
