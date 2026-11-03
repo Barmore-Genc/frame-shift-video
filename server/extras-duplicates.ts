@@ -5,13 +5,28 @@
  */
 
 import { readExtras, extraFilePath } from './extras-state';
+import { createHash } from 'crypto';
+import { thumbsOf } from './extras-eyes';
 import { frameSum, videoSeconds } from './extras-preview';
 
 const SAME_LENGTH_SECONDS = 0.5;
 const MOMENTS = [0.2, 0.5, 0.8];
 
-/** A checksum of the picture at a moment (frameSum; a test can give another). */
-export type Sum = (file: string, at: number) => Promise<string>;
+/** A checksum of the picture of an extra (its path under the DVDs folder) at a moment. */
+export type Sum = (path: string, at: number) => Promise<string>;
+
+/** The checksum made here with ffmpeg (fine where ffmpeg can decode the extras). */
+export const localSum =
+  (dir: string): Sum =>
+  async (path, at) =>
+    frameSum(await extraFilePath(dir, path), at);
+
+/** The checksum of the picture the listener makes (where this ffmpeg cannot decode the extras). */
+export const listenerSum: Sum = async (path, at) => {
+  const [picture] = await thumbsOf(path, at, 1, 160, 90);
+  if (!picture) throw new Error('There is no picture there');
+  return createHash('md5').update(picture).digest('hex');
+};
 
 /** Whether two videos show the same picture at the moments checked. */
 async function samePicture(
@@ -63,7 +78,7 @@ export async function measureExtras(
 export async function findDuplicates(
   dir: string,
   movie: string,
-  sum: Sum = frameSum,
+  sum: Sum = localSum(dir),
 ): Promise<string[][]> {
   const measured = await measureExtras(dir, movie);
   const groups: string[][] = [];
@@ -75,7 +90,7 @@ export async function findDuplicates(
       if (other === first || used.has(other.path)) continue;
       if (
         Math.abs(other.seconds - first.seconds) <= SAME_LENGTH_SECONDS &&
-        (await samePicture(first.real, other.real, first.seconds, sum))
+        (await samePicture(first.path, other.path, first.seconds, sum))
       ) {
         group.push(other);
       }

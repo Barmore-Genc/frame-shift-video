@@ -11,6 +11,7 @@ import { execFileSync } from 'child_process';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { findDuplicates, listenerSum } from '../../server/extras-duplicates';
 import { candidateRuns, findReels, type Look } from '../../server/extras-reels';
 import { discsExtrasDuplicatesHandler } from '../../server/handlers/discs';
 
@@ -21,6 +22,76 @@ const [REEL, P1, P2, P3, SHORT, DECOY] = [1, 2, 3, 4, 5, 6].map(extra);
 let dir: string;
 let sample: string;
 const realEnv = process.env.DISC_RIP_DIR;
+const realEyes = process.env.EXTRAS_EYES_URL;
+const realFetch = globalThis.fetch;
+
+/** What the listener makes: small grey pictures, one a second (here with the ffmpeg on this machine). */
+function pictures(
+  file: string,
+  from: number,
+  count: number,
+  width: number,
+  height: number,
+): Uint8Array[] {
+  const out = execFileSync(
+    'ffmpeg',
+    [
+      '-v',
+      'error',
+      '-ss',
+      String(from),
+      '-i',
+      file,
+      '-t',
+      String(count),
+      '-an',
+      '-sn',
+      '-vf',
+      `fps=1,scale=${width}:${height},format=gray`,
+      '-f',
+      'rawvideo',
+      '-',
+    ],
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+  const size = width * height;
+  const frames: Uint8Array[] = [];
+  for (let at = 0; at + size <= out.length; at += size) {
+    frames.push(out.subarray(at, at + size));
+  }
+  return frames;
+}
+
+/** A look that reads the extras of the test's library directly. */
+const local: Look = async (relative, from, count) =>
+  pictures(path.join(dir, relative), from, count, 32, 24);
+
+/** The listener, standing in for colossus's extras-eyes: answers /thumbs from the test's library. */
+type Ask = {
+  path: string;
+  start: number;
+  count: number;
+  width: number;
+  height: number;
+};
+
+function fakeListener(): Ask[] {
+  const asked: Ask[] = [];
+  process.env.EXTRAS_EYES_URL = 'http://eyes.test';
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+    const ask = JSON.parse(String(init?.body)) as Ask;
+    asked.push(ask);
+    const frames = pictures(
+      path.join(dir, ask.path),
+      ask.start,
+      ask.count,
+      ask.width,
+      ask.height,
+    ).map((frame) => Buffer.from(frame).toString('base64'));
+    return new Response(JSON.stringify({ frames }));
+  }) as unknown as typeof fetch;
+  return asked;
+}
 
 function color(file: string, hex: string, seconds: number) {
   execFileSync('ffmpeg', [
@@ -45,6 +116,8 @@ beforeAll(async () => {
   color(path.join(sample, 'p2.mkv'), '0x646464', 10);
   color(path.join(sample, 'p3.mkv'), '0xc8c8c8', 8);
   color(path.join(sample, 'short.mkv'), '0x9a9a9a', 5);
+  // The same length as p1, another picture.
+  color(path.join(sample, 'p1b.mkv'), '0x404040', 12);
   color(path.join(sample, 'tenreel.mkv'), '0x9a9a9a', 10);
   // The same length as the three, but not their pictures.
   color(path.join(sample, 'decoy.mkv'), '0x404040', 30);
@@ -88,6 +161,9 @@ beforeEach(async () => {
   await fs.writeFile(path.join(dir, `_converted/${MOVIE}/${MOVIE}.mkv`), 'm');
 });
 afterEach(async () => {
+  globalThis.fetch = realFetch;
+  if (realEyes === undefined) delete process.env.EXTRAS_EYES_URL;
+  else process.env.EXTRAS_EYES_URL = realEyes;
   if (realEnv === undefined) delete process.env.DISC_RIP_DIR;
   else process.env.DISC_RIP_DIR = realEnv;
   await fs.rm(dir, { recursive: true, force: true });
@@ -140,7 +216,7 @@ describe('finding reels', () => {
     await place(P2, 'p2.mkv');
     await place(P3, 'p3.mkv');
     await place(SHORT, 'short.mkv');
-    expect(await findReels(dir, MOVIE)).toEqual([
+    expect(await findReels(dir, MOVIE, local)).toEqual([
       { path: REEL, parts: [P1, P2, P3] },
     ]);
   });
@@ -150,7 +226,7 @@ describe('finding reels', () => {
     await place(P1, 'p1.mkv');
     await place(P2, 'p2.mkv');
     await place(P3, 'p3.mkv');
-    expect(await findReels(dir, MOVIE)).toEqual([]);
+    expect(await findReels(dir, MOVIE, local)).toEqual([]);
   });
 
   test('most of the parts have to be in the reel', async () => {
@@ -178,7 +254,7 @@ describe('finding reels', () => {
     await place(REEL, 'tenreel.mkv');
     await place(P1, 'short.mkv');
     await place(P2, 'short.mkv');
-    expect(await findReels(dir, MOVIE)).toEqual([]);
+    expect(await findReels(dir, MOVIE, local)).toEqual([]);
   });
 
   test('a part is looked for where it should be in the reel, not anywhere', async () => {
@@ -265,11 +341,13 @@ describe('finding reels', () => {
     expect(await findReels(dir, MOVIE, broken)).toEqual([]);
   });
 
-  test('the route says the reels beside the groups', async () => {
+  test('the route says the reels beside the groups, with pictures from the listener', async () => {
+    const asked = fakeListener();
     await place(REEL, 'reel.mkv');
     await place(P1, 'p1.mkv');
     await place(P2, 'p2.mkv');
     await place(P3, 'p3.mkv');
+    await place(extra(7), 'p1.mkv'); // a copy of the first part
     const response = await discsExtrasDuplicatesHandler(
       new Request(`http://x/api?${new URLSearchParams({ movie: MOVIE })}`),
       {},
@@ -278,7 +356,34 @@ describe('finding reels', () => {
       groups: string[][];
       reels: { path: string; parts: string[] }[];
     };
-    expect(body.groups).toEqual([]);
+    // The copies are looked for with the listener's pictures too (the big ones).
+    expect(asked.some((a) => a.width === 160)).toBe(true);
+    expect(body.groups).toEqual([[P1, extra(7)]]);
     expect(body.reels).toEqual([{ path: REEL, parts: [P1, P2, P3] }]);
+  });
+});
+
+describe('copies, with pictures from the listener', () => {
+  test('the same pictures are a copy and other pictures are not', async () => {
+    const asked = fakeListener();
+    await place(extra(1), 'p1.mkv');
+    await place(extra(2), 'p1.mkv');
+    await place(extra(3), 'p1b.mkv'); // the same length, another picture
+    await place(extra(4), 'p2.mkv'); // another length
+    const groups = await findDuplicates(dir, MOVIE, listenerSum);
+    expect(groups).toEqual([[extra(1), extra(2)]]);
+    // A picture at each of three moments of a 12 s extra, one at a time, as the listener makes them.
+    const first = asked.filter((a) => a.path === extra(1));
+    expect([...new Set(first.map((a) => a.start))].sort()).toEqual([
+      2.4, 6, 9.6,
+    ]);
+    expect(first.every((a) => a.count === 1 && a.width === 160)).toBe(true);
+  });
+
+  test('with no listener, a picture cannot be had and nothing is called a copy', async () => {
+    delete process.env.EXTRAS_EYES_URL;
+    await place(extra(1), 'p1.mkv');
+    await place(extra(2), 'p1.mkv');
+    expect(await findDuplicates(dir, MOVIE, listenerSum)).toEqual([]);
   });
 });
