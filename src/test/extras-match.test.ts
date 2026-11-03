@@ -557,3 +557,41 @@ describe('a reel of previews', () => {
     expect(matchExtra(ev(null, 60), []).state).toBe('none');
   });
 });
+
+describe('lengths read from the disc menu', () => {
+  // Teacher's Pet: the menu's exact lengths and the real files' lengths, with the neighbours that
+  // sit a few seconds away (the old six-second margin called them the same length).
+  const menu: NameSource = {
+    source: 'DVD menu',
+    page: 'The menus of the disc image',
+    url: '',
+    features: [
+      { text: 'A Whole Bunch Of World', depth: 1, seconds: 104.6 },
+      { text: 'Small But Mighty', depth: 1, seconds: 62.2 },
+      { text: 'Mambo Del Perro', depth: 1, seconds: 98.1 },
+    ],
+  };
+  const files = [
+    { path: 'e04', seconds: 104.671 },
+    { path: 'e05', seconds: 62.228 },
+    { path: 'e07', seconds: 59.893 },
+    { path: 'e17', seconds: 65.031 },
+    { path: 'e12', seconds: 98.231 },
+    { path: 'e15', seconds: 91.091 },
+    { path: 'e19', seconds: 94.094 },
+  ];
+
+  test('an exact menu length names the one file that has it, not its neighbours', () => {
+    const out = matchMovie(
+      files.map((f) => ({ ...f, ...ev(nothing(), f.seconds) })),
+      candidatesFrom([menu]),
+    );
+    expect(out.e04!.name).toBe('A Whole Bunch Of World');
+    expect(out.e05!.state).toBe('matched');
+    expect(out.e05!.name).toBe('Small But Mighty');
+    expect(out.e12!.state).toBe('matched');
+    expect(out.e12!.name).toBe('Mambo Del Perro');
+    for (const near of ['e07', 'e17', 'e15', 'e19'])
+      expect(out[near]!.state).not.toBe('matched');
+  });
+});
