@@ -498,10 +498,32 @@ export function matchMovie(
       claimed.set(s.name, [...(claimed.get(s.name) ?? []), path]);
     }
   }
-  for (const paths of claimed.values()) {
+  for (const [name, paths] of claimed) {
     if (paths.length < 2) continue;
+    // A length read from the disc menu is exact: the one file that has it keeps the name, and a
+    // text match on a file of another length is the one that is wrong.
+    const listed = names.find((n) => n.name === name);
+    const exact = listed?.sources.includes('DVD menu') ? listed.seconds : null;
+    const owners =
+      exact === null || exact === undefined
+        ? []
+        : paths.filter((path) => {
+            const seconds = items.find((o) => o.path === path)?.seconds;
+            return (
+              seconds != null && Math.abs(seconds - exact) <= EXACT_SECONDS
+            );
+          });
     for (const path of paths) {
       const s = out[path]!;
+      if (owners.length === 1) {
+        if (path === owners[0]) continue;
+        out[path] = {
+          ...s,
+          state: 'unsure',
+          note: `What was read or heard looks like “${name}”, but that is ${clock(exact!)} on the disc menu, and this is ${clock(s.seconds!)}.`,
+        };
+        continue;
+      }
       out[path] = {
         ...s,
         state: 'unsure',

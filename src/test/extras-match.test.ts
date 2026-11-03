@@ -595,3 +595,42 @@ describe('lengths read from the disc menu', () => {
       expect(out[near]!.state).not.toBe('matched');
   });
 });
+
+describe('a name two extras claim when the disc menu gives its length', () => {
+  const menu: NameSource = {
+    source: 'DVD menu',
+    page: 'The menus of the disc image',
+    url: '',
+    features: [
+      { text: 'The Not-So-Scary World of Bats', depth: 1, seconds: 100 },
+    ],
+  };
+
+  test('the file of that exact length keeps the name; the text match of another length does not', () => {
+    const out = matchMovie(
+      [
+        { path: 'exact', ...ev(BATS_CARD, 100.2) },
+        { path: 'other', ...ev(BATS_CARD, 176) },
+      ],
+      candidatesFrom([menu]),
+    );
+    expect(out.exact!.state).toBe('matched');
+    expect(out.exact!.name).toBe('The Not-So-Scary World of Bats');
+    expect(out.other!.state).toBe('unsure');
+    expect(out.other!.note).toContain('on the disc menu');
+  });
+
+  test('with no exact length, two claimants are still both taken back', () => {
+    const out = matchMovie(
+      [
+        { path: 'a', ...ev(BATS_CARD, 150) },
+        { path: 'b', ...ev(BATS_CARD, 176) },
+      ],
+      candidatesFrom([menu]),
+    );
+    expect(out.a!.note).not.toContain('on the disc menu');
+    expect(out.b!.note).not.toContain('on the disc menu');
+    expect(out.a!.state).toBe('unsure');
+    expect(out.b!.state).toBe('unsure');
+  });
+});
