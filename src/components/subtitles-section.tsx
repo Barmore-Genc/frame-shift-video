@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { MatchMovie } from '@/components/match-movie';
 import { CollapsibleCard } from '@/components/collapsible-card';
 import {
   useClearOldCopies,
@@ -63,6 +64,15 @@ export function describeTrack(track: SubtitleTrack): string {
 export function movieName(file: string): string {
   const parts = file.split('/');
   return parts.length > 1 ? parts.slice(0, -1).join(' / ') : parts[0];
+}
+
+/** The folder of a movie's own file (Name (Year)/Name (Year).mkv), which a TMDB match renames. */
+export function matchFolder(file: string): string | null {
+  const parts = file.split('/');
+  if (parts.length < 2) return null;
+  const folder = parts[parts.length - 2]!;
+  const base = parts[parts.length - 1]!.replace(/\.[^.]+$/, '');
+  return folder && base === folder ? folder : null;
 }
 
 function FileRow({
@@ -131,6 +141,9 @@ function FileRow({
               ))}
             </div>
           </details>
+        )}
+        {matchFolder(file.path) && (
+          <MatchMovie folder={matchFolder(file.path)!} />
         )}
       </div>
       {file.pictures > 0 ? (

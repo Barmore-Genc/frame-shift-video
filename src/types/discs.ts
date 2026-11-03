@@ -230,7 +230,13 @@ export type DiscCommand =
       episode?: number;
       image?: string;
     }
-  | { action: 'rename'; old: string; new: string }
+  | {
+      action: 'rename';
+      old: string;
+      new: string;
+      /** When the new name is taken, the folder that has it is set aside (kept), not refused */
+      replace?: boolean;
+    }
   /** Ask TMDB which movie a finished folder is, and rename it Title (Year) */
   | { action: 'match'; old: string }
   /** Search TMDB for movies, shows or either; the query may be a TMDB or IMDb address */

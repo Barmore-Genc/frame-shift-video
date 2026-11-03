@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { CollapsibleCard } from '@/components/collapsible-card';
+import { MatchMovie } from '@/components/match-movie';
 import {
   useDiscExtras,
   useExtraDuplicates,
@@ -614,6 +615,7 @@ function MovieSection({
       </h3>
       {open && (
         <>
+          <MatchMovie folder={movie.movie} />
           <Sources
             movie={movie.movie}
             enabled={movie.items.some((i) => i.unnamed)}
