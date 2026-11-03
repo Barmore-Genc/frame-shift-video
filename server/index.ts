@@ -321,6 +321,11 @@ const server = Bun.serve({
   async fetch(req, server) {
     const url = new URL(req.url);
 
+    // Looking for copies and reels compares the pictures of every extra, which takes longer than
+    // the 10 seconds Bun waits for a reply by default.
+    if (url.pathname === '/api/discs/extras/duplicates')
+      server.timeout(req, 240);
+
     // Handle WebSocket upgrade
     if (url.pathname === '/api/ws') {
       const upgraded = server.upgrade(req);
