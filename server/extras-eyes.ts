@@ -85,3 +85,47 @@ export async function compareAt(
   }
   return body;
 }
+
+/** What the menus of a movie's disc image say about its titles, as the listener answers it. */
+export interface MenuAnswer {
+  found: boolean;
+  disc?: string;
+  entries?: {
+    title: number;
+    seconds: number | null;
+    name: string;
+    play_all: boolean;
+    menu: string;
+  }[];
+}
+
+/**
+ * Asks the listener to read the menus of the movie's disc image (slow the first time: a minute for
+ * a disc with many menus; it keeps the answer). Not every movie has an image kept.
+ */
+export async function menuAt(
+  title: string,
+  year: number | null,
+  fetcher: Fetcher = fetch,
+  base: string | undefined = process.env.EXTRAS_EYES_URL,
+  timeoutMs: number = 3 * 60 * 1000,
+): Promise<MenuAnswer> {
+  if (!base) throw new ListenerUnavailable('The listener is not set up here');
+  let response: Response;
+  try {
+    response = await fetcher(`${base.replace(/\/$/, '')}/menu`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, year }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    throw new ListenerUnavailable('The listener could not be reached');
+  }
+  const body = (await response.json().catch(() => null)) as
+    (MenuAnswer & { error?: string }) | null;
+  if (!response.ok || !body) {
+    throw new Error(body?.error ?? 'The disc menus could not be read');
+  }
+  return body;
+}

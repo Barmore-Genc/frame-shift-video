@@ -11,11 +11,18 @@ import {
   clearSourceCache,
   fromCompare,
   fromFandom,
+  fromMenu,
   nameSources,
   titleAndYear,
   type SourceDeps,
 } from '../../server/extras-sources';
-import { compareAt, ListenerUnavailable } from '../../server/extras-eyes';
+import {
+  compareAt,
+  ListenerUnavailable,
+  menuAt,
+  type MenuAnswer,
+} from '../../server/extras-eyes';
+import { candidatesFrom, matchMovie } from '../../server/extras-match';
 import type { NameSource } from '../types/discs';
 
 // Shaped like TheDiscDB's real files (Journey to the Center of the Earth, 2008, a Region 1 DVD).
@@ -278,6 +285,7 @@ describe('putting the databases together', () => {
     compare: async () => COMPARE,
     discdb: async () => [DISCDB_SOURCE],
     fandom: async () => FANDOM,
+    menu: async () => ({ found: false }),
     ...over,
   });
 
@@ -327,6 +335,174 @@ describe('putting the databases together', () => {
     await nameSources('Duma (2005)', flaky, 1000);
     await nameSources('Duma (2005)', flaky, 2000);
     expect(tries).toBe(2);
+  });
+});
+
+const MENU: MenuAnswer = {
+  found: true,
+  disc: 'Teachers_Pet',
+  entries: [
+    {
+      title: 14,
+      seconds: 154.8,
+      name: "Teacher's Pet",
+      play_all: false,
+      menu: 'Music Videos',
+    },
+    {
+      title: 26,
+      seconds: 477.6,
+      name: 'Play All',
+      play_all: true,
+      menu: 'Sneak Peeks',
+    },
+  ],
+};
+
+describe('the disc menus as a list of names', () => {
+  test("each button that plays a title is a name with that title's own length", () => {
+    const [source] = fromMenu(MENU);
+    expect(source).toMatchObject({
+      source: 'DVD menu',
+      url: '',
+      page: 'The menus of the disc image Teachers_Pet',
+    });
+    expect(source!.features).toEqual([
+      { text: "Teacher's Pet", depth: 1, seconds: 154.8, kind: null },
+      {
+        text: 'Play All',
+        depth: 1,
+        seconds: 477.6,
+        playAll: true,
+        kind: 'Trailers',
+      },
+    ]);
+  });
+
+  test('no image, or a disc whose menus gave no names, is no list', () => {
+    expect(fromMenu({ found: false })).toEqual([]);
+    expect(fromMenu({ found: true, disc: 'x', entries: [] })).toEqual([]);
+  });
+
+  test('an extra of the right length is named by the menu, and the play-all is explained', () => {
+    const names = candidatesFrom(fromMenu(MENU));
+    const out = matchMovie(
+      [
+        { path: 'Extra 01', seconds: 155, look: null },
+        { path: 'Extra 02', seconds: 477, look: null },
+        { path: 'Extra 03', seconds: 3000, look: null },
+      ],
+      names,
+    );
+    expect(out['Extra 01']).toMatchObject({
+      state: 'matched',
+      name: "Teacher's Pet",
+    });
+    expect(out['Extra 01']!.note).toContain('DVD menu');
+    expect(out['Extra 02']!.name).toBeUndefined();
+    expect(out['Extra 03']!.state).toBe('none');
+  });
+
+  const deps = (over: Partial<SourceDeps> = {}): SourceDeps => ({
+    compare: async () => ({ found: false }),
+    discdb: async () => [],
+    fandom: async () => ({ found: false }),
+    menu: async () => MENU,
+    ...over,
+  });
+
+  test("the menu names come first, and are asked for by the movie's title and year", async () => {
+    clearSourceCache();
+    let asked: unknown[] = [];
+    const sources = await nameSources(
+      "Teacher's Pet (2004)",
+      deps({
+        menu: async (...args) => {
+          asked = args;
+          return MENU;
+        },
+      }),
+    );
+    expect(sources.map((s) => s.source)).toEqual(['DVD menu']);
+    expect(asked).toEqual(["Teacher's Pet", 2004]);
+  });
+
+  test('a menu that cannot be read leaves the other lists as they were, and is tried again', async () => {
+    clearSourceCache();
+    let tries = 0;
+    const flaky = deps({
+      fandom: async () => FANDOM,
+      menu: async () => {
+        tries++;
+        throw new ListenerUnavailable('down');
+      },
+    });
+    expect(
+      (await nameSources('Duma (2005)', flaky)).map((s) => s.source),
+    ).toEqual(['DVD Fandom']);
+    await nameSources('Duma (2005)', flaky);
+    expect(tries).toBe(2);
+  });
+
+  test('a menu that is slow to read is not waited for, and is not remembered as empty', async () => {
+    clearSourceCache();
+    let tries = 0;
+    const slow = deps({
+      fandom: async () => FANDOM,
+      menu: () => {
+        tries++;
+        return new Promise<MenuAnswer>(() => {});
+      },
+    });
+    const started = Date.now();
+    const sources = await nameSources('Duma (2005)', slow, Date.now(), 30);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(sources.map((s) => s.source)).toEqual(['DVD Fandom']);
+    await nameSources('Duma (2005)', slow, Date.now(), 30);
+    expect(tries).toBe(2);
+  });
+});
+
+describe('asking the listener for the disc menus', () => {
+  test('sends the title and year to /menu and reads the answer', async () => {
+    let sent: { url: string; body: string } | null = null;
+    const fetcher = (async (url: string, init?: RequestInit) => {
+      sent = { url, body: String(init?.body) };
+      return new Response(JSON.stringify(MENU));
+    }) as unknown as typeof fetch;
+    expect(
+      (await menuAt("Teacher's Pet", 2004, fetcher, 'http://eyes:3002/')).found,
+    ).toBe(true);
+    expect(sent!.url).toBe('http://eyes:3002/menu');
+    expect(JSON.parse(sent!.body)).toEqual({
+      title: "Teacher's Pet",
+      year: 2004,
+    });
+  });
+
+  test('not set up, unreachable and refused are each said', async () => {
+    const reply = (body: unknown, status = 200) =>
+      (async () =>
+        new Response(JSON.stringify(body), {
+          status,
+        })) as unknown as typeof fetch;
+    await expect(menuAt('Duma', 2005, reply({}), undefined)).rejects.toThrow(
+      ListenerUnavailable,
+    );
+    const down = (async () => {
+      throw new Error('refused');
+    }) as unknown as typeof fetch;
+    await expect(menuAt('Duma', 2005, down, 'http://x')).rejects.toThrow(
+      ListenerUnavailable,
+    );
+    await expect(
+      menuAt(
+        'Duma',
+        2005,
+        reply({ error: 'The disc menus could not be read' }, 500),
+        'http://x',
+      ),
+    ).rejects.toThrow('could not be read');
   });
 });
 

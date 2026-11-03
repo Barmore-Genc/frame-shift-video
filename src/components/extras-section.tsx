@@ -388,14 +388,18 @@ function Sources({ movie, enabled }: { movie: string; enabled: boolean }) {
           className="mt-3"
         >
           <p className="text-sm font-semibold text-gray-900 dark:text-white">
-            <a
-              className="underline"
-              href={source.url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {source.source}
-            </a>
+            {source.url ? (
+              <a
+                className="underline"
+                href={source.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {source.source}
+              </a>
+            ) : (
+              source.source
+            )}
             {source.release ? `: ${source.release}` : ''}
             {source.runtime ? ` (the movie: ${source.runtime})` : ''}
           </p>

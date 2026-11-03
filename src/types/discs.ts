@@ -292,8 +292,8 @@ export interface NameEntry {
 
 /** What one database lists as the bonus features of a movie's disc. */
 export interface NameSource {
-  source: 'DVD Compare' | 'TheDiscDB' | 'DVD Fandom';
-  /** The page the list is from, and its address */
+  source: 'DVD Compare' | 'TheDiscDB' | 'DVD Fandom' | 'DVD menu';
+  /** The page the list is from, and its address (none for the disc's own menus) */
   page: string;
   url: string;
   /** Which release of the movie (Region 1 only for DVD Compare and TheDiscDB) */

@@ -237,6 +237,26 @@ describe('the "Name the extras" section', () => {
     expect(container.textContent).toBe('');
   });
 
+  test("the disc's own menus are listed with no link, since there is no page for them", async () => {
+    sources = [
+      {
+        source: 'DVD menu',
+        page: 'The menus of the disc image Duma',
+        url: '',
+        features: [{ text: 'Making Of', depth: 1, seconds: 154.8 }],
+      },
+    ];
+    page();
+    expect(
+      await screen.findByText(
+        'What the databases list on this disc (DVD menu)',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Making Of (2:34)')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'DVD menu' })).toBeNull();
+    expect(screen.getByText('DVD menu')).toBeTruthy();
+  });
+
   test('shows what every database lists, with the lengths they give', async () => {
     sources = [
       {
