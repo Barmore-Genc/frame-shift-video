@@ -3,6 +3,7 @@ import {
   readSubtitlesState,
   requestClean,
   requestClearOldCopies,
+  requestDropPictures,
   requestDropTrack,
   requestRestore,
   requestSubtitles,
@@ -97,6 +98,31 @@ export async function subtitlesRemoveTrackHandler(
   try {
     const path = await requestDropTrack(discsDir(), body.path, body.track);
     return json({ removing: path }, 200, corsHeaders);
+  } catch (error) {
+    return json(
+      { error: error instanceof Error ? error.message : 'Could not ask' },
+      400,
+      corsHeaders,
+    );
+  }
+}
+
+/**
+ * POST /api/subtitles/remove-pictures, body { path } or { all: true }: take every picture subtitle
+ * track out of a file, or out of every file whose pictures could not be read.
+ */
+export async function subtitlesRemovePicturesHandler(
+  req: Request,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const body = await readBody(req);
+  if (!body) return json({ error: 'Send JSON' }, 400, corsHeaders);
+  try {
+    const count = await requestDropPictures(
+      discsDir(),
+      body.all === true ? { all: true } : { path: body.path },
+    );
+    return json({ queued: count }, 200, corsHeaders);
   } catch (error) {
     return json(
       { error: error instanceof Error ? error.message : 'Could not ask' },

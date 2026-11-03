@@ -288,7 +288,8 @@ export function cleanSubtitlePath(
   return text;
 }
 
-type Action = 'convert' | 'restore' | 'clear' | 'recheck' | 'droptrack';
+type Action =
+  'convert' | 'restore' | 'clear' | 'recheck' | 'droptrack' | 'droppictures';
 
 async function writeRequest(
   dir: string,
@@ -399,6 +400,36 @@ export async function requestDropTrack(
   }
   await writeRequest(dir, relative, 'droptrack', track);
   return relative;
+}
+
+/**
+ * Asks for every picture subtitle track to be taken out of one file, or of every file whose
+ * pictures could not be read (the ones that otherwise stay as pictures for good). The old file is
+ * kept first. Returns how many files were asked for.
+ */
+export async function requestDropPictures(
+  dir: string,
+  request: { path: unknown } | { all: true },
+): Promise<number> {
+  const output = await outputFolder(dir);
+  const state = await readSubtitlesState(dir);
+  if ('all' in request) {
+    const wanted = state.files.filter((f) => f.unreadable && f.status === null);
+    for (const file of wanted)
+      await writeRequest(dir, file.path, 'droppictures');
+    return wanted.length;
+  }
+  const relative = cleanSubtitlePath(request.path, output);
+  const known = state.files.find((f) => f.path === relative);
+  if (!known) throw new Error('That file is not in the list of movies');
+  if (!known.tracks.some((t) => t.codec === 'picture')) {
+    throw new Error('It has no picture subtitles');
+  }
+  if (known.status !== null) {
+    throw new Error('That file is being worked on, try again in a minute');
+  }
+  await writeRequest(dir, relative, 'droppictures');
+  return 1;
 }
 
 /** Asks for the old copy of a file to be put back; the converted file is kept in its place. */

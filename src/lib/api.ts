@@ -571,6 +571,23 @@ export async function removeSubtitleTrack(
 }
 
 /**
+ * Ask for every picture subtitle track to be taken out of one file, or of every file whose pictures
+ * could not be read (the old file is kept first). Answers how many files were asked for.
+ */
+export async function removeSubtitlePictures(
+  what: { path: string } | { all: true },
+): Promise<{ queued: number }> {
+  const response = await fetch(`${API_BASE}/subtitles/remove-pictures`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(what),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || 'Failed to ask');
+  return body as { queued: number };
+}
+
+/**
  * Ask for the old copy of a file to be put back (the converted file is kept in its place)
  */
 export async function restoreSubtitles(path: string): Promise<void> {

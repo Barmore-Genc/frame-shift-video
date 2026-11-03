@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { SubtitlesSection } from '@/components/subtitles-section';
 import type { SubtitlesState } from '@/types/subtitles';
 
@@ -91,6 +97,70 @@ describe('picture subtitles that could not be read', () => {
         .textContent,
     ).toContain('stay as pictures');
     expect(screen.queryAllByText('Text')).toHaveLength(0);
+  });
+
+  test('"Remove the problem subtitles" asks for every such movie, after a confirmation', async () => {
+    state = {
+      ...base,
+      files: [file('Rebound (2005)/Rebound (2005).mkv', true)],
+    };
+    const sent: unknown[] = [];
+    const realConfirm = window.confirm;
+    let sure = false;
+    window.confirm = () => sure;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/subtitles/remove-pictures')) {
+        sent.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ queued: 1 }));
+      }
+      return new Response(JSON.stringify(state));
+    }) as unknown as typeof fetch;
+    try {
+      show();
+      const button = await screen.findByRole('button', {
+        name: 'Remove the problem subtitles',
+      });
+      fireEvent.click(button);
+      expect(sent).toEqual([]);
+      sure = true;
+      fireEvent.click(button);
+      await screen.findByText(/Asked\. It starts within a minute/);
+      expect(sent).toEqual([{ all: true }]);
+    } finally {
+      window.confirm = realConfirm;
+    }
+  });
+
+  test('in the full list the file has its own button, which names just that file', async () => {
+    state = {
+      ...base,
+      files: [file('Rebound (2005)/Rebound (2005).mkv', true)],
+    };
+    const sent: unknown[] = [];
+    const realConfirm = window.confirm;
+    window.confirm = () => true;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith('/subtitles/remove-pictures')) {
+        sent.push(JSON.parse(String(init?.body)));
+        return new Response(JSON.stringify({ queued: 1 }));
+      }
+      return new Response(JSON.stringify(state));
+    }) as unknown as typeof fetch;
+    try {
+      show();
+      fireEvent.click(await screen.findByRole('button', { name: /Show all/ }));
+      await screen.findByText(/Some picture subtitles could not be read, so/);
+      const buttons = screen.getAllByRole('button', {
+        name: 'Remove the problem subtitles',
+      });
+      expect(buttons).toHaveLength(2);
+      fireEvent.click(buttons[1]!);
+      await waitFor(() =>
+        expect(sent).toEqual([{ path: 'Rebound (2005)/Rebound (2005).mkv' }]),
+      );
+    } finally {
+      window.confirm = realConfirm;
+    }
   });
 
   test('a movie that can still be converted is offered, next to one that cannot', async () => {
