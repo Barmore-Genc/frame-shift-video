@@ -295,14 +295,37 @@ describe('finding reels', () => {
         asked.part++;
         return [new Uint8Array(768).fill(value)];
       };
-    // Every part is in it: the first two parts say so, and the third is not looked at (a look at the reel would be new).
+    // Every part is in it, each found at its first moment. (The first two parts are near the start,
+    // so one look at the reel serves both.)
     expect(await findReels(dir, MOVIE, picture(200))).toHaveLength(1);
-    // (The first two parts are near the start, so one look at the reel serves both.)
-    expect(asked).toEqual({ reel: 1, part: 2 });
-    // None is: the first two parts, each at its three moments, say so.
+    expect(asked).toEqual({ reel: 2, part: 3 });
+    // None is: every part is tried at its three moments.
     asked.reel = asked.part = 0;
     expect(await findReels(dir, MOVIE, picture(50))).toEqual([]);
-    expect(asked).toEqual({ reel: 1, part: 6 });
+    expect(asked).toEqual({ reel: 4, part: 9 });
+  });
+
+  test('parts are looked for a few at a time, and no more once enough are found', async () => {
+    color(path.join(sample, 'six.mkv'), '0x646464', 120);
+    color(path.join(sample, 'twenty.mkv'), '0x646464', 20);
+    await place(extra(1), 'six.mkv');
+    for (let n = 2; n <= 7; n++) await place(extra(n), 'twenty.mkv');
+    let parts = 0;
+    let running = 0;
+    let most = 0;
+    const every: Look = async (file) => {
+      if (!file.endsWith('Extra 1.mkv')) parts++;
+      most = Math.max(most, ++running);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      running--;
+      return [new Uint8Array(768).fill(100)];
+    };
+    const found = await findReels(dir, MOVIE, every);
+    expect(found).toHaveLength(1);
+    // Six parts need four found: the first four are looked at together and the other two are not.
+    expect(parts).toBe(4);
+    // ...and a few at a time, not one by one and not all at once.
+    expect(most).toBe(4);
   });
 
   test('what a reel is made of is not looked at as a reel of its own', async () => {
