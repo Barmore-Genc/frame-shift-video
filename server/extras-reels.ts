@@ -21,6 +21,8 @@ const WIDTH = 32;
 const HEIGHT = 24;
 /** The most two small grey pictures may differ (mean per pixel, 0-255) and still be the same picture. */
 const SAME_PICTURE = 7;
+/** How many parts are looked for at the same time (the listener decodes them side by side). */
+const AT_ONCE = 4;
 /** The share of parts that must be found in the reel. */
 const FOUND_SHARE = 0.6;
 
@@ -83,8 +85,8 @@ function remembered(look: Look): Look {
 
 /**
  * Whether most of the parts' pictures are in the reel, where each part should be. Looking at a
- * reel is slow, so it stops as soon as the answer cannot change: enough parts found, or too many
- * missing, and each part is looked for at one moment after another until it is found.
+ * reel is slow, so the parts are looked for a few at a time and it stops as soon as the answer
+ * cannot change: enough parts found, or too many missing.
  */
 async function partsAreIn(
   reel: Measured,
@@ -94,13 +96,14 @@ async function partsAreIn(
   const total = parts.reduce((sum, p) => sum + p.seconds, 0);
   const scale = reel.seconds / total;
   const needed = Math.max(2, Math.ceil(parts.length * FOUND_SHARE));
-  let found = 0;
-  let missed = 0;
+  const starts: number[] = [];
   let before = 0;
   for (const part of parts) {
-    const start = before * scale;
+    starts.push(before * scale);
     before += part.seconds;
-    let matched = false;
+  }
+  /** Whether one part's pictures are in the reel: tried at one moment after another until found. */
+  const isIn = async (part: Measured, start: number): Promise<boolean> => {
     for (const moment of PART_MOMENTS) {
       try {
         const [mine] = await look(part.path, part.seconds * moment, 1);
@@ -112,18 +115,24 @@ async function partsAreIn(
         const near = Math.round(expected - from);
         for (let i = near - WINDOW_SECONDS; i <= near + WINDOW_SECONDS; i++) {
           const theirs = inReel[i];
-          if (theirs && difference(mine, theirs) <= SAME_PICTURE) {
-            matched = true;
-            break;
-          }
+          if (theirs && difference(mine, theirs) <= SAME_PICTURE) return true;
         }
       } catch {
         // A picture that cannot be read is not found.
       }
-      if (matched) break;
     }
-    if (matched) found++;
-    else missed++;
+    return false;
+  };
+  let found = 0;
+  let missed = 0;
+  for (let at = 0; at < parts.length; at += AT_ONCE) {
+    const results = await Promise.all(
+      parts.slice(at, at + AT_ONCE).map((p, k) => isIn(p, starts[at + k]!)),
+    );
+    for (const result of results) {
+      if (result) found++;
+      else missed++;
+    }
     if (found >= needed) return true;
     if (missed > parts.length - needed) return false;
   }
