@@ -25,8 +25,7 @@ import {
   renameExtra,
   restoreExtras,
 } from '../extras-state';
-import { findCopies } from '../extras-copies';
-import { listenerSum } from '../extras-duplicates';
+import { findCopies, pictureDeps } from '../extras-copies';
 import { frameJpeg, previewTimes, videoSeconds } from '../extras-preview';
 import { fandomHint } from '../fandom-hints';
 import { matchState, startMatch } from '../extras-match-job';
@@ -455,13 +454,7 @@ export async function discsExtrasDuplicatesHandler(
     return json({ error: 'movie is needed' }, 400, corsHeaders);
   }
   return asBadRequest(corsHeaders, async () =>
-    json(
-      await findCopies(discsDir(), movie, {
-        sum: process.env.EXTRAS_EYES_URL ? listenerSum : undefined,
-      }),
-      200,
-      corsHeaders,
-    ),
+    json(await findCopies(discsDir(), movie, pictureDeps()), 200, corsHeaders),
   );
 }
 
