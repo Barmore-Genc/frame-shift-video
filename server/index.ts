@@ -21,6 +21,8 @@ import { collectSystemStatus, type NodeSystemStatus } from './system-status';
 import { updateFollowerSystemStatus } from './handlers/settings';
 import { detectFFmpegCapabilities } from './ffmpeg-capabilities';
 import { resumeInProgressBatches } from './job-creation-service';
+import { discsDir } from './disc-state';
+import { startWarming } from './extras-warm';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const DIST_DIR = process.env.DIST_DIR || './dist';
@@ -348,6 +350,9 @@ const server = Bun.serve({
 });
 
 logger.info('[Server] Started successfully', { port: PORT });
+
+// Have the copies and reels of each movie's extras ready before the Discs page asks.
+if (INSTANCE_TYPE !== 'follower') startWarming(discsDir());
 
 // System status monitoring interval (10 seconds)
 const SYSTEM_STATUS_INTERVAL = 10000;

@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { clearCopiesCache, findCopies } from '../../server/extras-copies';
+import {
+  clearCopiesCache,
+  findCopies,
+  REFRESH_MS,
+  warmCopies,
+} from '../../server/extras-copies';
 
 const MOVIE = 'Charlotte (2003)';
 const A = `_converted/${MOVIE}/Other/Extra 01.mkv`;
@@ -112,5 +117,78 @@ describe('keeping the copies and reels of a movie', () => {
     await expect(findCopies(dir, 'Nothing (1999)', {})).rejects.toThrow(
       'no extras',
     );
+  });
+});
+
+describe('warming the copies and reels of a movie ahead of a page', () => {
+  test('a warmed movie is kept, so the page does not search', async () => {
+    const { calls, search } = counting();
+    await warmCopies(dir, MOVIE, { search });
+    expect(await findCopies(dir, MOVIE, { search })).toEqual(ANSWER);
+    expect(calls.n).toBe(1);
+  });
+
+  test('a page that asks during the first search joins it', async () => {
+    const { calls, search } = counting(ANSWER, 30);
+    const warming = warmCopies(dir, MOVIE, { search });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(await findCopies(dir, MOVIE, { search })).toEqual(ANSWER);
+    await warming;
+    expect(calls.n).toBe(1);
+  });
+
+  test('a fresh answer is left alone and one half an hour old is searched for again', async () => {
+    const { calls, search } = counting();
+    const start = Date.now();
+    await warmCopies(dir, MOVIE, { search, now: start });
+    await warmCopies(dir, MOVIE, {
+      search,
+      now: start + REFRESH_MS - 1000,
+    });
+    expect(calls.n).toBe(1);
+    await warmCopies(dir, MOVIE, {
+      search,
+      now: start + REFRESH_MS + 1000,
+    });
+    expect(calls.n).toBe(2);
+  });
+
+  test('a page that asks while an old answer is being renewed gets the old one at once', async () => {
+    const start = Date.now();
+    await findCopies(dir, MOVIE, { search: async () => ANSWER, now: start });
+    const renewed = { groups: [], reels: [] };
+    const slow = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return renewed;
+    };
+    const later = start + REFRESH_MS + 1000;
+    const warming = warmCopies(dir, MOVIE, { search: slow, now: later });
+    const began = Date.now();
+    expect(await findCopies(dir, MOVIE, { search: slow, now: later })).toEqual(
+      ANSWER,
+    );
+    expect(Date.now() - began).toBeLessThan(60);
+    await warming;
+    // ...and once the search is done, the new answer is the one kept.
+    expect(await findCopies(dir, MOVIE, { search: slow, now: later })).toEqual(
+      renewed,
+    );
+  });
+
+  test('a movie whose extras changed is searched for again, and a failed warm is not kept', async () => {
+    const { calls, search } = counting();
+    await warmCopies(dir, MOVIE, { search });
+    await place(`_converted/${MOVIE}/Other/Extra 03.mkv`, 'three');
+    await warmCopies(dir, MOVIE, { search });
+    expect(calls.n).toBe(2);
+    await place(`_converted/${MOVIE}/Other/Extra 04.mkv`, 'four');
+    const failing = async (): Promise<typeof ANSWER> => {
+      throw new Error('the listener fell over');
+    };
+    await expect(warmCopies(dir, MOVIE, { search: failing })).rejects.toThrow(
+      'fell',
+    );
+    expect(await findCopies(dir, MOVIE, { search })).toEqual(ANSWER);
+    expect(calls.n).toBe(3);
   });
 });
