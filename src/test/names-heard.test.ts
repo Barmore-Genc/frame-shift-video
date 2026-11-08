@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { namesHeard } from '../lib/names-heard';
+import { namesHeard, trailerTitle } from '../lib/names-heard';
 
 // What the listener really heard in the first minute and a half of the previews on Teacher's Pet.
 const ALADDIN =
@@ -12,6 +12,14 @@ const MULAN =
   "Every man from every family must serve in the Imperial Army. Father, you can't go. Mulan, you dishonor me. She was a girl who defied tradition to save her family's honor. The latest gift and honor is having you for a daughter. And now Mulan returns from the Disney Vault for the first time ever in a two-disc special edition DVD with remastered digital picture and sound and exclusive bonus features. Including activitie";
 const DAVE =
   "Every weekend on Disney Channel, Dave the Barbarian. Meet Dave, he is the Barbarian. Please don't hurt me. And his two lovely sisters, Candy and Fang, the new spappy, his bed dragon. Together, they must guard the family castle. Will they be heroic? Will they fend off fiendish fiends? I'm the Master of Evil, the Master of Evil! Well, me. Dave the Barbarian every weekend at 53430 Central on Disney Channel.";
+
+// The whole of what was heard in these previews (Teacher's Pet, extras 17, 18 and 19).
+const FULL_MUSKETEERS =
+  "All new on Disney DVD and video. Walt Disney Pictures proudly presents Mickey, Donald, and Goofy in an all new motion picture event. The Three Musketeers. I want Bobby Gart. Have I got to met for you? Oh, boy. Oh, if you think you can't do, get some dairy, yeah. You'll know that there's a must of you, you'll know this. Musketeers! All four, one, and one for all. All four, one, hey! All four, one, and one for all. All four, one, hey! All four, one, and one for all. All four, one, and one for all. All four, one, and all. Remaring only on Disney DVD and video. Mickey, Donald, and Goofy, starring in the Three Musketeers. Summer 2004. Oh, for fun? And for all. Ha ha!";
+const FULL_LION_KING =
+  "The Circle of Life continues as the legacy of the Lion King concludes in the Lion King 2 Simba's pride special edition We are part of each other one day I won't be here and I need you to carry on in my place My name is Cobra Two different worlds must unite these lands belong to Scars to save the pride lands. What is your destiny? I will avenge scars scar scar. Oh heck of a guy a little moody, but Featuring six original songs a true original Lion King voice cast Ror work with me and an all-new short film one by one produced by the creators of the Lion King Walt Disney pictures invites you to experience the magic of the Lion King legacy and complete the Circle of Life with the special edition release of the Lion King 2 Simba's pride on Disney DVD and video this fall";
+const FULL_MULAN =
+  "Every man from every family must serve in the Imperial Army. Father, you can't go. Mulan, you dishonor me. She was a girl who defied tradition to save her family's honor. The latest gift and honor is having you for a daughter. And now Mulan returns from the Disney Vault for the first time ever in a two-disc special edition DVD with remastered digital picture and sound and exclusive bonus features. Including activities that will take you beyond the movie and into the world of Mulan. Very nice. You can sit by me. A music video starring Jackie Chan. And newly found footage never before released. You the man. Well, sort of. Experience all the adventures. Like me. All the glory. You have saved us all. And all the breathtaking animation of Mulan, like never before. You don't meet a girl like that every Dynasty. The Mulan two-disc special edition DVD. Coming October.";
 
 describe('the names said in real previews', () => {
   test('the Aladdin preview says its film', () => {
@@ -136,5 +144,36 @@ describe('what counts as a name', () => {
     expect(namesHeard(`we met ${many.join(', ')} today`)).toEqual(
       many.slice(0, 8),
     );
+  });
+});
+
+describe('the film a preview advertises', () => {
+  const title = (text: string) => trailerTitle(text)?.title;
+  test('the Aladdin preview says it twice, with the words after it that differ left off', () => {
+    expect(title(ALADDIN)).toBe('The Aladdin Special Edition');
+  });
+  test('a studio said often is not the film', () => {
+    expect(title(FULL_MUSKETEERS)).toBe('The Three Musketeers');
+  });
+  test('the title grows over the words said with it each time, even lower-case ones', () => {
+    expect(title(FULL_LION_KING)).toBe("The Lion King 2 Simba's Pride");
+  });
+  test('a single word film is its name', () => {
+    expect(title(FULL_MULAN)).toBe('Mulan');
+  });
+  test('"the" inside a title stays, and a phrase said as often does not beat it by length alone', () => {
+    expect(title(DAVE)).toBe('Dave the Barbarian');
+  });
+  test('says how many times it was said', () => {
+    expect(trailerTitle(ALADDIN)?.times).toBe(2);
+  });
+  test('words capitalized only at the start of a sentence are not a title', () => {
+    expect(
+      title('All four, one for all. All four, one for all. All four, hey.'),
+    ).toBeUndefined();
+  });
+  test('nothing said twice is no title', () => {
+    expect(title('some rice cakes.')).toBeUndefined();
+    expect(title('')).toBeUndefined();
   });
 });
