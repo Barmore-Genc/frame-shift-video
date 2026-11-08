@@ -34,6 +34,9 @@ let renames: Rename[];
 let failWith: string | null;
 let sources: unknown[];
 let hintAsked: string[];
+let sourceUrls: string[];
+let refreshedSources: unknown[] | 'fails';
+let refreshTakes: number;
 let previewAsked: string[];
 let previewFails: boolean;
 let matchState: unknown;
@@ -68,6 +71,9 @@ beforeEach(() => {
     // Not there: nothing to clear.
   }
   sources = [];
+  sourceUrls = [];
+  refreshedSources = [];
+  refreshTakes = 0;
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
     if (String(url).includes('/discs/extras/duplicates')) {
       return new Response(
@@ -113,6 +119,18 @@ beforeEach(() => {
       hintAsked.push(
         new URL(String(url), 'http://x').searchParams.get('movie')!,
       );
+      sourceUrls.push(String(url));
+      if (
+        new URL(String(url), 'http://x').searchParams.get('refresh') === '1'
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, refreshTakes));
+        if (refreshedSources === 'fails') {
+          return new Response(JSON.stringify({ error: 'down' }), {
+            status: 500,
+          });
+        }
+        return new Response(JSON.stringify({ sources: refreshedSources }));
+      }
       return new Response(JSON.stringify({ sources }));
     }
     if (String(url).endsWith('/discs/extras/rename')) {
@@ -815,6 +833,94 @@ describe('the "Name the extras" section', () => {
         /This is 3 extras played one after another \(“One”, “Two”, “Three”\)/,
       ),
     ).toBeTruthy();
+  });
+
+  test('the names can be looked up again, and what comes back replaces the list', async () => {
+    sources = [
+      {
+        source: 'DVD menu',
+        page: 'The menus of the disc image Duma',
+        url: '',
+        features: [{ text: 'Making Of', depth: 1, seconds: 154.8 }],
+      },
+    ];
+    refreshedSources = [
+      {
+        source: 'DVD menu',
+        page: 'The menus of the disc image Duma',
+        url: '',
+        features: [
+          { text: 'Making Of', depth: 1, seconds: 154.8 },
+          { text: 'Bonus Episode: Muttamorphosis', depth: 1, seconds: 1330.2 },
+        ],
+      },
+    ];
+    page();
+    await screen.findByText('What the databases list on this disc (DVD menu)');
+    expect(screen.queryByText(/Muttamorphosis/)).toBeNull();
+    // Asked once with no "refresh", as the page always has.
+    expect(sourceUrls.some((u) => u.includes('refresh'))).toBe(false);
+    click('Look the names up again');
+    expect(await screen.findByText(/Muttamorphosis \(22:10\)/)).toBeTruthy();
+    expect(sourceUrls.filter((u) => u.includes('refresh=1'))).toHaveLength(1);
+    const last = new URL(sourceUrls[sourceUrls.length - 1]!, 'http://x');
+    expect(last.searchParams.get('movie')).toBe('Duma (2005)');
+  });
+
+  test('while they are being looked up again the button says so and cannot be pressed twice', async () => {
+    sources = [
+      {
+        source: 'DVD menu',
+        page: 'x',
+        url: '',
+        features: [{ text: 'Making Of', depth: 1, seconds: 154.8 }],
+      },
+    ];
+    refreshTakes = 150;
+    page();
+    await screen.findByText('What the databases list on this disc (DVD menu)');
+    click('Look the names up again');
+    const working = (await screen.findByRole('button', {
+      name: 'Looking them up again…',
+    })) as HTMLButtonElement;
+    expect(working.disabled).toBe(true);
+    await screen.findByRole('button', { name: 'Look the names up again' });
+  });
+
+  test('a lookup that fails is said, and the list stays', async () => {
+    sources = [
+      {
+        source: 'DVD menu',
+        page: 'x',
+        url: '',
+        features: [{ text: 'Making Of', depth: 1, seconds: 154.8 }],
+      },
+    ];
+    refreshedSources = 'fails';
+    page();
+    await screen.findByText('What the databases list on this disc (DVD menu)');
+    click('Look the names up again');
+    expect(
+      await screen.findByText('Could not look them up again.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Making Of (2:34)')).toBeTruthy();
+  });
+
+  test('with no list at all the names can still be looked up again', async () => {
+    page();
+    await screen.findByText(
+      'DVD Compare, TheDiscDB and DVD Fandom have no list for this movie.',
+    );
+    refreshedSources = [
+      {
+        source: 'DVD Fandom',
+        page: 'Duma',
+        url: 'https://dvd.fandom.com/wiki/Duma',
+        features: [{ text: 'Zebra Cut', depth: 1, seconds: null }],
+      },
+    ];
+    click('Look the names up again');
+    expect(await screen.findByText('Zebra Cut')).toBeTruthy();
   });
 
   test('with no copies, Select copies is not offered', async () => {

@@ -107,6 +107,11 @@ export function clearSourceCache(): void {
   kept.clear();
 }
 
+/** Forgets what was kept for one movie, so the next look asks every database again. */
+export function forgetSources(movie: string): void {
+  kept.delete(movie);
+}
+
 /** Every database's list for the movie, asked at the same time. Kept an hour. */
 export async function nameSources(
   movie: string,

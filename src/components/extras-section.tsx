@@ -12,6 +12,7 @@ import {
   useExtraPreview,
   useStartExtraMatch,
   useExtraSources,
+  useRefreshExtraSources,
   useRenameDiscExtra,
 } from '@/lib/api-hooks';
 import { discExtraFileUrl, discExtraFrameUrl } from '@/lib/api';
@@ -373,6 +374,7 @@ function ExtraRow({
  */
 function Sources({ movie, enabled }: { movie: string; enabled: boolean }) {
   const { data, isLoading } = useExtraSources(movie, enabled);
+  const refresh = useRefreshExtraSources(movie);
   if (!enabled) return null;
   if (isLoading) {
     return (
@@ -381,71 +383,96 @@ function Sources({ movie, enabled }: { movie: string; enabled: boolean }) {
       </p>
     );
   }
+  const again = (
+    <p className="mt-1 text-sm">
+      <button
+        type="button"
+        className="underline text-blue-700 dark:text-blue-300 disabled:opacity-50 disabled:no-underline"
+        disabled={refresh.isPending}
+        onClick={() => refresh.mutate()}
+      >
+        {refresh.isPending
+          ? 'Looking them up again…'
+          : 'Look the names up again'}
+      </button>
+      {refresh.isError && (
+        <span className="ml-2 text-red-700 dark:text-red-400">
+          Could not look them up again.
+        </span>
+      )}
+    </p>
+  );
   if (!data || data.length === 0) {
     return (
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        DVD Compare, TheDiscDB and DVD Fandom have no list for this movie.
-      </p>
+      <>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          DVD Compare, TheDiscDB and DVD Fandom have no list for this movie.
+        </p>
+        {again}
+      </>
     );
   }
   return (
-    <details className="mt-1 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-3">
-      <summary className="cursor-pointer text-sm font-medium text-blue-900 dark:text-blue-100">
-        What the databases list on this disc (
-        {data.map((s) => s.source).join(', ')})
-      </summary>
-      {data.map((source) => (
-        <div
-          key={`${source.source}-${source.release ?? ''}-${source.url}`}
-          className="mt-3"
-        >
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">
-            {source.url ? (
-              <a
-                className="underline"
-                href={source.url}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {source.source}
-              </a>
-            ) : (
-              source.source
-            )}
-            {source.release ? `: ${source.release}` : ''}
-            {source.runtime ? ` (the movie: ${source.runtime})` : ''}
-          </p>
-          {source.features.length === 0 ? (
-            <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-              No bonus features are listed.
-            </p>
-          ) : (
-            <ul className="mt-1 text-sm text-gray-800 dark:text-gray-200">
-              {source.features.map((line, index) => (
-                <li
-                  key={`${index}-${line.text}`}
-                  style={{
-                    paddingLeft: `${Math.max(line.depth - 1, 0) * 16}px`,
-                  }}
-                  className={
-                    line.depth === 0 ? 'mt-2 font-semibold' : undefined
-                  }
+    <>
+      <details className="mt-1 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-blue-900 dark:text-blue-100">
+          What the databases list on this disc (
+          {data.map((s) => s.source).join(', ')})
+        </summary>
+        {data.map((source) => (
+          <div
+            key={`${source.source}-${source.release ?? ''}-${source.url}`}
+            className="mt-3"
+          >
+            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+              {source.url ? (
+                <a
+                  className="underline"
+                  href={source.url}
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  {line.text}
-                  {line.seconds ? ` (${clock(line.seconds)})` : ''}
-                  {line.playAll ? ' (plays the others in a row)' : ''}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ))}
-      <p className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-        DVD Compare and TheDiscDB are for Region 1 discs. A length is what the
-        database gives; many give names only, so match those by what each one
-        is.
-      </p>
-    </details>
+                  {source.source}
+                </a>
+              ) : (
+                source.source
+              )}
+              {source.release ? `: ${source.release}` : ''}
+              {source.runtime ? ` (the movie: ${source.runtime})` : ''}
+            </p>
+            {source.features.length === 0 ? (
+              <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                No bonus features are listed.
+              </p>
+            ) : (
+              <ul className="mt-1 text-sm text-gray-800 dark:text-gray-200">
+                {source.features.map((line, index) => (
+                  <li
+                    key={`${index}-${line.text}`}
+                    style={{
+                      paddingLeft: `${Math.max(line.depth - 1, 0) * 16}px`,
+                    }}
+                    className={
+                      line.depth === 0 ? 'mt-2 font-semibold' : undefined
+                    }
+                  >
+                    {line.text}
+                    {line.seconds ? ` (${clock(line.seconds)})` : ''}
+                    {line.playAll ? ' (plays the others in a row)' : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+        <p className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+          DVD Compare and TheDiscDB are for Region 1 discs. A length is what the
+          database gives; many give names only, so match those by what each one
+          is.
+        </p>
+      </details>
+      {again}
+    </>
   );
 }
 

@@ -595,6 +595,19 @@ export function useExtraSources(movie: string, enabled: boolean) {
 }
 
 /**
+ * Hook to ask the databases for a movie's disc again, now (the server keeps what it found for an
+ * hour, and so does the page). What it finds replaces what the page has.
+ */
+export function useRefreshExtraSources(movie: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => fetchExtraSources(movie, true),
+    onSuccess: (sources) =>
+      queryClient.setQueryData(['extra-sources', movie], sources),
+  });
+}
+
+/**
  * Hook to find the extras of a movie that are the same video twice. Asked once for the session
  * (it looks at the pictures), and again after extras are removed.
  */
