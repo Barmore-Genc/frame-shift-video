@@ -923,6 +923,68 @@ describe('the "Name the extras" section', () => {
     expect(await screen.findByText('Zebra Cut')).toBeTruthy();
   });
 
+  test('the names said in an extra are listed for a person to read, unless its name is clear', async () => {
+    const spoken =
+      'All new on Disney DVD and video. Walt Disney Pictures proudly presents Mickey, Donald, and Goofy in an all new motion picture event. The Three Musketeers.';
+    matchState = {
+      status: 'done',
+      total: 1,
+      done: 1,
+      suggestions: {
+        [PATH]: {
+          state: 'unsure',
+          note: 'It starts with the ratings card shown before movie previews.',
+          saw: '',
+          heard: spoken,
+        },
+      },
+    };
+    const first = page();
+    expect(
+      await screen.findByText(
+        'Names said in it: Walt Disney Pictures · Mickey · Donald · Goofy · The Three Musketeers',
+      ),
+    ).toBeTruthy();
+    first.unmount();
+
+    matchState = {
+      status: 'done',
+      total: 1,
+      done: 1,
+      suggestions: {
+        [PATH]: {
+          state: 'matched',
+          note: 'Looks like “Making Of”: it is 2:34 long.',
+          name: 'Making Of',
+          saw: '',
+          heard: spoken,
+        },
+      },
+    };
+    page();
+    await screen.findByText(/Looks like “Making Of”/);
+    expect(screen.queryByText(/Names said in it/)).toBeNull();
+  });
+
+  test('an extra in which no name was said has no such line', async () => {
+    matchState = {
+      status: 'done',
+      total: 1,
+      done: 1,
+      suggestions: {
+        [PATH]: {
+          state: 'none',
+          note: 'Nothing fits.',
+          saw: '',
+          heard: 'some rice cakes!',
+        },
+      },
+    };
+    page();
+    await screen.findByText('Nothing fits.');
+    expect(screen.queryByText(/Names said in it/)).toBeNull();
+  });
+
   test('with no copies, Select copies is not offered', async () => {
     page();
     await pick('Making Of');
