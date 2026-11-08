@@ -257,24 +257,26 @@ describe('finding reels', () => {
     expect(await findReels(dir, MOVIE, local)).toEqual([]);
   });
 
-  test('a part is looked for where it should be in the reel, not anywhere', async () => {
+  test('a part is found anywhere in the reel, in any order, and not found when it is nowhere', async () => {
     await place(REEL, 'reel.mkv');
     await place(P1, 'p1.mkv');
     await place(P2, 'p2.mkv');
     await place(P3, 'p3.mkv');
-    // The reel's pictures are all alike but for one, at second `when`; every part shows that one.
+    // The reel shows one picture at second `when`; every part shows that one.
     const oneAt =
-      (when: number): Look =>
-      async (file) =>
+      (when: number | null): Look =>
+      async (file, from) =>
         file.endsWith('Extra 1.mkv')
           ? Array.from({ length: 80 }, (_, i) =>
-              new Uint8Array(768).fill(i === when ? 50 : 200),
+              new Uint8Array(768).fill(from + i === when ? 50 : 200),
             )
-          : [new Uint8Array(768).fill(50)];
-    // Where the second and third parts are expected (from about 12 and 22 s): found.
-    expect(await findReels(dir, MOVIE, oneAt(30))).toHaveLength(1);
-    // Far from where any of them is expected: not found.
-    expect(await findReels(dir, MOVIE, oneAt(75))).toEqual([]);
+          : [new Uint8Array(768).fill(file.endsWith('Extra 2.mkv') ? 50 : 50)];
+    // Near the start, in the middle and at the end: wherever it is, the parts are in it.
+    for (const when of [2, 40, 75]) {
+      expect(await findReels(dir, MOVIE, oneAt(when))).toHaveLength(1);
+    }
+    // In no part's place (it is nowhere): they are not.
+    expect(await findReels(dir, MOVIE, oneAt(null))).toEqual([]);
   });
 
   test('the reel is looked at no more than it takes to be sure', async () => {
@@ -283,8 +285,8 @@ describe('finding reels', () => {
     await place(P2, 'p2.mkv');
     await place(P3, 'p3.mkv');
     const asked = { reel: 0, part: 0 };
-    // The first seconds of the reel show 200 and those of the first part show `start`; the rest of
-    // the reel shows 200 and each part shows `value`.
+    // The first seconds of the reel show 200 and those of every part show `start`; the rest of the
+    // reel shows 200 and each part shows `value`.
     const picture =
       (value: number, start = 200): Look =>
       async (file, _from, count) => {
@@ -297,19 +299,38 @@ describe('finding reels', () => {
           ? Array.from({ length: 80 }, () => new Uint8Array(768).fill(200))
           : [new Uint8Array(768).fill(value)];
       };
-    // Every part is in it, each found at its first moment: a look at the start of the reel and of
-    // the first part, then the three parts together. (The first two parts are near the start, so
-    // one look at the reel serves both.)
+    // Every part is in it: a look at the start of the reel and of the first part, then each part at
+    // its first moment, and the pictures of the whole reel (30 s: one piece), asked for once.
     expect(await findReels(dir, MOVIE, picture(200))).toHaveLength(1);
-    expect(asked).toEqual({ reel: 3, part: 4 });
-    // A reel that does not start like its first part is looked at no more.
+    expect(asked).toEqual({ reel: 2, part: 4 });
+    // A reel that does not start like any of its parts is looked at no more.
     asked.reel = asked.part = 0;
     expect(await findReels(dir, MOVIE, picture(200, 50))).toEqual([]);
-    expect(asked).toEqual({ reel: 1, part: 1 });
+    expect(asked).toEqual({ reel: 1, part: 3 });
     // None of the parts is in it: every part is tried at its three moments.
     asked.reel = asked.part = 0;
     expect(await findReels(dir, MOVIE, picture(50))).toEqual([]);
-    expect(asked).toEqual({ reel: 5, part: 10 });
+    expect(asked).toEqual({ reel: 2, part: 10 });
+  });
+
+  test('the whole reel is asked for in pieces the listener can give, and once', async () => {
+    color(path.join(sample, 'long.mkv'), '0x646464', 200);
+    color(path.join(sample, 'hundred.mkv'), '0x646464', 100);
+    await place(extra(1), 'long.mkv');
+    await place(extra(2), 'hundred.mkv');
+    await place(extra(3), 'hundred.mkv');
+    const pieces: number[][] = [];
+    const every: Look = async (file, from, count) => {
+      if (file.endsWith('Extra 1.mkv') && count > 5) pieces.push([from, count]);
+      return [new Uint8Array(768).fill(100)];
+    };
+    expect(await findReels(dir, MOVIE, every)).toHaveLength(1);
+    // 200 s in pieces of at most 90 s: 0-90, 90-180, 180-200 (each asked for once, not per part).
+    expect(pieces.sort((a, b) => a[0]! - b[0]!)).toEqual([
+      [0, 90],
+      [90, 90],
+      [180, 90],
+    ]);
   });
 
   test('parts are looked for a few at a time, and no more once enough are found', async () => {
@@ -321,10 +342,13 @@ describe('finding reels', () => {
     let running = 0;
     let most = 0;
     const every: Look = async (file) => {
-      if (!file.endsWith('Extra 1.mkv')) parts++;
-      most = Math.max(most, ++running);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      running--;
+      const isPart = !file.endsWith('Extra 1.mkv');
+      if (isPart) {
+        parts++;
+        most = Math.max(most, ++running);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        running--;
+      }
       return [new Uint8Array(768).fill(100)];
     };
     const found = await findReels(dir, MOVIE, every);
@@ -336,37 +360,52 @@ describe('finding reels', () => {
     expect(most).toBe(4);
   });
 
-  test('once a part is found, the others are looked for near where the parts found put the reel', async () => {
-    // Eight parts of 20 s in a reel of 160 s that shows each 3 s later than the one before it
-    // would be, so the last is 21 s late.
-    color(path.join(sample, 'eight.mkv'), '0x646464', 160);
-    await place(extra(1), 'eight.mkv');
-    for (let n = 2; n <= 9; n++) await place(extra(n), 'twenty.mkv');
-    // A different picture at every second (no two alike: they differ in most of their pixels).
+  test('parts are not looked for any more once too many are missing', async () => {
+    color(path.join(sample, 'six.mkv'), '0x646464', 120);
+    color(path.join(sample, 'twenty.mkv'), '0x646464', 20);
+    await place(extra(1), 'six.mkv');
+    for (let n = 2; n <= 7; n++) await place(extra(n), 'twenty.mkv');
+    let parts = 0;
+    const none: Look = async (file, _from, count) => {
+      if (!file.endsWith('Extra 1.mkv')) parts++;
+      if (count === 5) return [new Uint8Array(768).fill(100)]; // the starts are alike
+      return [
+        new Uint8Array(768).fill(file.endsWith('Extra 1.mkv') ? 200 : 50),
+      ];
+    };
+    expect(await findReels(dir, MOVIE, none)).toEqual([]);
+    // Six parts need four found, so three missing is enough to say no: the start of the first part,
+    // then the first four parts at their three moments each, and the other two not at all.
+    expect(parts).toBe(1 + 4 * 3);
+  });
+
+  test('a Play All that plays the parts in another order than the files are listed is still a reel', async () => {
+    // The reel is 20 + 20 + 20 s that show pictures 1, 2, 3; its parts are listed as 3, 1, 2.
+    color(path.join(sample, 'sixty.mkv'), '0x646464', 60);
+    color(path.join(sample, 'twenty.mkv'), '0x646464', 20);
+    await place(extra(1), 'sixty.mkv');
+    for (let n = 2; n <= 4; n++) await place(extra(n), 'twenty.mkv');
     const shows = (second: number) =>
       Uint8Array.from(
         { length: 768 },
-        (_, i) =>
-          (i * 31 +
-            Math.round(second) * 97 +
-            (i % 7) * Math.round(second) * 11) %
-          256,
+        (_, i) => (i * 31 + second * 97 + (i % 7) * second * 11) % 256,
       );
-    const windows: number[] = [];
-    const drifted: Look = async (file, from, count) => {
+    // The reel's second t shows picture t; Extra 2 is the part at 40-60 s, 3 at 0-20, 4 at 20-40.
+    const where: Record<string, number> = {
+      'Extra 2.mkv': 40,
+      'Extra 3.mkv': 0,
+      'Extra 4.mkv': 20,
+    };
+    const shuffled: Look = async (file, from, count) => {
       if (file.endsWith('Extra 1.mkv')) {
-        if (count > 5) windows.push(count);
         return Array.from({ length: count }, (_, i) => shows(from + i));
       }
-      // A part shows the same pictures as the reel does where it plays it.
-      const k = Number(/Extra (\d)/.exec(file)![1]) - 2;
-      return [shows(k * 20 + k * 3 + Math.round(from))];
+      const base = where[file.split('/').pop()!]!;
+      return [shows(base + Math.round(from))];
     };
-    expect(await findReels(dir, MOVIE, drifted)).toHaveLength(1);
-    // The first four parts are looked for within 20 s either way, the rest within 8 s of where
-    // the first four put the reel.
-    expect(windows.some((w) => w === 41)).toBe(true);
-    expect(windows.some((w) => w === 17)).toBe(true);
+    expect(await findReels(dir, MOVIE, shuffled)).toEqual([
+      { path: extra(1), parts: [extra(2), extra(3), extra(4)] },
+    ]);
   });
 
   test('what a reel is made of is not looked at as a reel of its own', async () => {

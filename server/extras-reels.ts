@@ -3,8 +3,9 @@
  * extras in a row, and the ripper makes a file of that too, so the same footage is on the disc twice
  * (once as the reel and once as its parts). The parts are the ones worth keeping, because each can
  * be named; the reel is the copy. A reel is found by its length (the lengths of a run of the
- * other extras add up to it) and then by its pictures (each part's pictures are in the reel where
- * that part should be). A person decides what to remove; this only says which ones are reels.
+ * other extras add up to it) and then by its pictures (each part's pictures are somewhere in the
+ * reel: a "Play All" plays them in the menu's order, which is not the order of the files). A person
+ * decides what to remove; this only says which ones are reels.
  */
 
 import { measureExtras, type Measured } from './extras-duplicates';
@@ -14,12 +15,10 @@ import { thumbsOf } from './extras-eyes';
 const LENGTH_SHARE = 0.015;
 const LENGTH_FLOOR_SECONDS = 3;
 const MIN_REEL_SECONDS = 30;
-/** Where a part is looked for in the reel: its expected place, give or take this many seconds. */
-const WINDOW_SECONDS = 20;
-/** ...and once a part has been found, and so how far the reel has drifted from the plan, this many. */
-const NEAR_SECONDS = 8;
-/** A reel starts with its first part: the first seconds of both are compared before anything dearer. */
+/** A reel starts with one of its parts: the first seconds of both are compared before anything dearer. */
 const START_SECONDS = 5;
+/** The listener gives at most this many pictures at once, so a reel's pictures are asked for in pieces. */
+const PIECE_SECONDS = 90;
 const PART_MOMENTS = [0.25, 0.5, 0.75];
 const WIDTH = 32;
 const HEIGHT = 24;
@@ -97,90 +96,67 @@ async function partsAreIn(
   parts: Measured[],
   look: Look,
 ): Promise<boolean> {
-  const total = parts.reduce((sum, p) => sum + p.seconds, 0);
-  const scale = reel.seconds / total;
   const needed = Math.max(2, Math.ceil(parts.length * FOUND_SHARE));
-  const starts: number[] = [];
-  let before = 0;
-  for (const part of parts) {
-    starts.push(before * scale);
-    before += part.seconds;
-  }
-  /**
-   * How far from the plan (in seconds) one part's pictures are in the reel, or null when they are
-   * not. Tried at one moment after another until found, around where the part should be.
-   */
-  const isIn = async (
-    part: Measured,
-    start: number,
-    shift: number,
-    window: number,
-  ): Promise<number | null> => {
+  // Every picture of the reel, asked for once and only when the first part is about to be looked for.
+  let pictures: Promise<Uint8Array[]> | undefined;
+  const inTheReel = () => {
+    pictures ??= Promise.all(
+      Array.from({ length: Math.ceil(reel.seconds / PIECE_SECONDS) }, (_, k) =>
+        look(reel.path, k * PIECE_SECONDS, PIECE_SECONDS),
+      ),
+    ).then((pieces) => pieces.flat());
+    return pictures;
+  };
+  /** Whether one part's pictures are somewhere in the reel: tried at one moment after another. */
+  const isIn = async (part: Measured): Promise<boolean> => {
     for (const moment of PART_MOMENTS) {
       try {
         const [mine] = await look(part.path, part.seconds * moment, 1);
         if (!mine) continue;
-        // Where it should be in the reel, as a place in the pictures taken from `from`.
-        const expected = start + part.seconds * moment * scale + shift;
-        const from = Math.max(0, expected - window);
-        const inReel = await look(reel.path, from, 2 * window + 1);
-        const near = Math.round(expected - from);
-        for (let i = near - window; i <= near + window; i++) {
-          const theirs = inReel[i];
-          if (theirs && difference(mine, theirs) <= SAME_PICTURE) {
-            return shift + (i - near);
-          }
+        if (
+          (await inTheReel()).some(
+            (theirs) => difference(mine, theirs) <= SAME_PICTURE,
+          )
+        ) {
+          return true;
         }
       } catch {
         // A picture that cannot be read is not found.
       }
     }
-    return null;
+    return false;
   };
   let found = 0;
   let missed = 0;
-  let shift = 0;
-  const shifts: number[] = [];
   for (let at = 0; at < parts.length; at += AT_ONCE) {
-    // Until a part has been found, the reel may have drifted far from the plan; after that, not far
-    // from where the parts found so far put it.
-    const window = shifts.length === 0 ? WINDOW_SECONDS : NEAR_SECONDS;
-    const results = await Promise.all(
-      parts
-        .slice(at, at + AT_ONCE)
-        .map((p, k) => isIn(p, starts[at + k]!, shift, window)),
-    );
+    const results = await Promise.all(parts.slice(at, at + AT_ONCE).map(isIn));
     for (const result of results) {
-      if (result === null) {
-        missed++;
-      } else {
-        found++;
-        shifts.push(result);
-      }
+      if (result) found++;
+      else missed++;
     }
     if (found >= needed) return true;
     if (missed > parts.length - needed) return false;
-    if (shifts.length > 0) {
-      shift = [...shifts].sort((a, b) => a - b)[Math.floor(shifts.length / 2)]!;
-    }
   }
   return false;
 }
 
-/** Whether the reel starts with the first part: some picture in the first seconds of both is alike. */
+/** Whether the reel starts like one of the parts: a picture in the first seconds of both is alike. */
 async function startsWith(
   reel: Measured,
-  first: Measured,
+  parts: Measured[],
   look: Look,
 ): Promise<boolean> {
   try {
-    const [inReel, inPart] = await Promise.all([
-      look(reel.path, 0, START_SECONDS),
-      look(first.path, 0, START_SECONDS),
-    ]);
-    return inReel.some((a) =>
-      inPart.some((b) => difference(a, b) <= SAME_PICTURE),
-    );
+    const inReel = await look(reel.path, 0, START_SECONDS);
+    for (const part of parts) {
+      const inPart = await look(part.path, 0, START_SECONDS);
+      if (
+        inReel.some((a) => inPart.some((b) => difference(a, b) <= SAME_PICTURE))
+      ) {
+        return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
@@ -188,7 +164,7 @@ async function startsWith(
 
 /**
  * The extras of `movie` that are runs of its other extras played in a row. Each reel says its parts
- * (paths, in order). Extras that cannot be measured are left out.
+ * (paths, in the order they are listed). Extras that cannot be measured are left out.
  */
 export async function findReels(
   dir: string,
@@ -208,7 +184,7 @@ export async function findReels(
     );
     for (const parts of candidateRuns(reel, others)) {
       if (
-        (await startsWith(reel, parts[0]!, look)) &&
+        (await startsWith(reel, parts, look)) &&
         (await partsAreIn(reel, parts, look))
       ) {
         reels.push({ path: reel.path, parts: parts.map((p) => p.path) });
