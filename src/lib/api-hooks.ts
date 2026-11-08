@@ -38,6 +38,7 @@ import {
   fetchExtraPreview,
   fetchFandomHint,
   removeDiscExtras,
+  removeIdenticalExtras,
   fetchRemovedExtras,
   restoreDiscExtras,
   startExtraMatch,
@@ -628,6 +629,22 @@ export function useRemoveExtras() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: removeDiscExtras,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.discExtras });
+      queryClient.invalidateQueries({ queryKey: queryKeys.removedExtras });
+      queryClient.invalidateQueries({ queryKey: ['extra-duplicates'] });
+      queryClient.invalidateQueries({ queryKey: ['extra-match'] });
+    },
+  });
+}
+
+/**
+ * Hook to keep one of each set of exactly identical extras of a movie
+ */
+export function useRemoveIdenticalExtras() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: removeIdenticalExtras,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.discExtras });
       queryClient.invalidateQueries({ queryKey: queryKeys.removedExtras });

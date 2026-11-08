@@ -44,6 +44,8 @@ let matchStarted: string[];
 let dupGroups: string[][];
 let dupReels: { path: string; parts: string[] }[];
 let removed: string[][];
+let identicalAsked: string[];
+let identicalRemoved: string[];
 let removedList: unknown[];
 let restored: string[][];
 let movieList: unknown[];
@@ -58,6 +60,8 @@ beforeEach(() => {
   previewFails = false;
   matchState = null;
   matchStarted = [];
+  identicalAsked = [];
+  identicalRemoved = [];
   dupGroups = [];
   dupReels = [];
   removed = [];
@@ -87,6 +91,16 @@ beforeEach(() => {
       const paths = JSON.parse(String(init?.body)).paths as string[];
       restored.push(paths);
       return new Response(JSON.stringify({ restored: paths, failed: [] }));
+    }
+    if (String(url).includes('/discs/extras/remove-identical')) {
+      identicalAsked.push(JSON.parse(String(init?.body)).movie);
+      return new Response(
+        JSON.stringify({
+          kept: ['k'],
+          removed: identicalRemoved,
+          failed: [],
+        }),
+      );
     }
     if (String(url).includes('/discs/extras/remove')) {
       const paths = JSON.parse(String(init?.body)).paths as string[];
@@ -635,6 +649,26 @@ describe('the "Name the extras" section', () => {
       'Moved 1 extra to the Removed tab',
     );
     expect((await pick('Trailer 01 (2 min)')).checked).toBe(false);
+  });
+
+  test('Remove exact copies asks for the movie, and says what it did', async () => {
+    identicalRemoved = [TRAILER];
+    page();
+    await pick('Making Of');
+    click('Remove exact copies');
+    await waitFor(() => expect(identicalAsked).toEqual(['Duma (2005)']));
+    expect((await screen.findByRole('status')).textContent).toContain(
+      'Kept one of each exact copy and moved 1 to the Removed tab',
+    );
+  });
+
+  test('Remove exact copies says so when nothing is the same', async () => {
+    page();
+    await pick('Making Of');
+    click('Remove exact copies');
+    expect(
+      await screen.findByText('No two extras are exactly the same file.'),
+    ).toBeTruthy();
   });
 
   test('the Remove button of one extra moves only that one', async () => {

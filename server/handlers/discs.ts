@@ -26,6 +26,7 @@ import {
   restoreExtras,
 } from '../extras-state';
 import { findCopies, pictureDeps } from '../extras-copies';
+import { removeIdentical } from '../extras-identical';
 import { frameJpeg, previewTimes, videoSeconds } from '../extras-preview';
 import { fandomHint } from '../fandom-hints';
 import { matchState, startMatch } from '../extras-match-job';
@@ -474,6 +475,25 @@ export async function discsExtrasRemoveHandler(
   if (!body) return json({ error: 'paths are needed' }, 400, corsHeaders);
   return asBadRequest(corsHeaders, async () =>
     json(await removeExtras(discsDir(), body.paths), 200, corsHeaders),
+  );
+}
+
+/**
+ * POST /api/discs/extras/remove-identical
+ * Body: { movie: string }. Keeps one of each set of extras whose files are exactly the same and moves
+ * the others to the _removed folder. Answers which were kept, which were moved and which could not be.
+ */
+export async function discsExtrasRemoveIdenticalHandler(
+  req: Request,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const body = await readBody(req);
+  if (!body || typeof body.movie !== 'string') {
+    return json({ error: 'movie is needed' }, 400, corsHeaders);
+  }
+  const movie = body.movie;
+  return asBadRequest(corsHeaders, async () =>
+    json(await removeIdentical(discsDir(), movie), 200, corsHeaders),
   );
 }
 
