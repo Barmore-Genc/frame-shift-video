@@ -634,3 +634,137 @@ describe('a name two extras claim when the disc menu gives its length', () => {
     expect(out.b!.state).toBe('unsure');
   });
 });
+
+describe('the exact length of the disc menu decides over a name that was only said', () => {
+  // Teacher's Pet, live: the 22-minute bonus episode says "I wanna be a boy", a 2:07 song of the
+  // menu; and a 6:20 reel of previews is as long as "The Art Of Gary Baseman" (6:19) is.
+  const menu: NameSource = {
+    source: 'DVD menu',
+    page: 'The menus of the disc image',
+    url: '',
+    features: [
+      { text: 'I Wanna Be A Boy', depth: 1, seconds: 127.6 },
+      { text: 'Bonus Episode: Muttamorphosis', depth: 1, seconds: 1330.2 },
+      { text: 'The Art Of Gary Baseman', depth: 1, seconds: 380.1 },
+    ],
+  };
+  const names = candidatesFrom([menu]);
+  const sings: Look = {
+    seconds: 1330,
+    ocr: [],
+    speech: [
+      {
+        start: 0,
+        end: 20,
+        text: 'I wanna be a boy. Gotta be a boy. I wanna be a boy, a boy, a boy.',
+      },
+    ],
+  };
+
+  test('a song named in the speech of a far longer extra does not stop its exact length naming it', () => {
+    const answer = matchExtra(ev(sings, 1330.996), names);
+    // (A name is made safe as a file name: the colon becomes a dash.)
+    expect(answer).toMatchObject({
+      state: 'matched',
+      name: 'Bonus Episode - Muttamorphosis',
+    });
+  });
+
+  test("the same words in an extra of the song's own length still name the song", () => {
+    const song = matchExtra(ev(sings, 127.694), names);
+    expect(song).toMatchObject({ state: 'matched', name: 'I Wanna Be A Boy' });
+  });
+
+  test('a name only said in an extra whose length fits another name with no menu length is still unsure', () => {
+    const list = candidatesFrom([
+      menu,
+      {
+        source: 'DVD Compare',
+        page: 'x',
+        url: 'x',
+        features: [{ text: 'Making of Duma', depth: 1, seconds: 600 }],
+      },
+    ]);
+    const card: Look = {
+      seconds: 600,
+      ocr: [{ t: 1, lines: ['I WANNA BE A BOY'] }],
+      speech: [],
+    };
+    const answer = matchExtra(ev(card, 600), list);
+    expect(answer.state).toBe('unsure');
+    expect(answer.note).toContain('Making of Duma');
+  });
+
+  test('a said name whose length is close to the extra is still doubted, as before', () => {
+    const list = candidatesFrom([
+      {
+        ...menu,
+        features: [
+          { text: 'Bonus Episode: Muttamorphosis', depth: 1, seconds: 1330.2 },
+          { text: 'A Close Name', depth: 1, seconds: 1320 },
+        ],
+      },
+    ]);
+    const says: Look = {
+      seconds: 1330,
+      ocr: [{ t: 1, lines: ['A CLOSE NAME'] }],
+      speech: [],
+    };
+    const answer = matchExtra(ev(says, 1330.996), list);
+    expect(answer.state).toBe('unsure');
+    expect(answer.note).toContain('A Close Name');
+  });
+
+  test('a said name whose length comes from another database is also doubted', () => {
+    const list = candidatesFrom([
+      {
+        ...menu,
+        features: [
+          { text: 'Bonus Episode: Muttamorphosis', depth: 1, seconds: 1330.2 },
+        ],
+      },
+      {
+        source: 'DVD Compare',
+        page: 'x',
+        url: 'x',
+        features: [{ text: 'I Wanna Be A Boy', depth: 1, seconds: 127 }],
+      },
+    ]);
+    expect(matchExtra(ev(sings, 1330.996), list).state).toBe('unsure');
+  });
+
+  const previews: Look = {
+    seconds: 380,
+    ocr: [
+      {
+        t: 1,
+        lines: [
+          'THE FOLLOWING PREVIEW HAS BEEN APPROVED FOR',
+          'ALL AUDIENCES',
+          'BY THE MOTION PICTURE ASSOCIATION OF AMERICA',
+        ],
+      },
+    ],
+    speech: [],
+  };
+
+  test('a reel of previews that shares its length with a listed feature is a reel of previews', () => {
+    const answer = matchExtra(ev(previews, 380.346), names, () => 1);
+    expect(answer).toMatchObject({ state: 'unsure', name: 'Previews' });
+    expect(answer.note).toContain('ratings card');
+  });
+
+  test('without the ratings card, sharing a length is still only said to be unclear', () => {
+    const answer = matchExtra(ev(nothing(), 380.346), names, () => 1);
+    expect(answer.name).toBe('The Art Of Gary Baseman');
+    expect(answer.note).toContain('another extra is that length too');
+  });
+
+  test('a unique length is still a match even when the ratings card is shown', () => {
+    const answer = matchExtra(ev(previews, 380.1), names, () => 0);
+    expect(answer).toMatchObject({
+      state: 'matched',
+      name: 'The Art Of Gary Baseman',
+    });
+  });
+});
