@@ -103,6 +103,20 @@ export async function findCopies(
 }
 
 /**
+ * What was found for the movie, when there is a fresh answer, else null. It never searches: for what
+ * can do without (naming extras should not wait minutes for the pictures).
+ */
+export async function keptCopies(
+  dir: string,
+  movie: string,
+  now: number = Date.now(),
+): Promise<Copies | null> {
+  const hit = kept.get(`${dir}|${movie}`);
+  if (!hit || now - hit.at >= KEPT_MS) return null;
+  return hit.signature === (await signatureOf(dir, movie)) ? hit.copies : null;
+}
+
+/**
  * Searches ahead of a page asking: when the movie has no answer, or an old one, or its extras have
  * changed. A page that asks meanwhile is given the kept answer, or joins this search.
  */

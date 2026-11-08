@@ -255,6 +255,121 @@ describe('matching a movie', () => {
   });
 });
 
+describe('an extra that is other extras played in a row', () => {
+  test('is not looked at or given a name, says what it is made of, and still counts as done', async () => {
+    const reels = async () => [{ path: CARD, parts: [BLANK, NAMED] }];
+    const { state, finished } = await startMatch(dir, MOVIE, deps({ reels }));
+    await finished;
+    expect(state.status).toBe('done');
+    expect(state.done).toBe(state.total);
+    // Its title card names "The Not-So-Scary World of Bats", but it is not that: it is a reel.
+    expect(asked).toEqual([BLANK]);
+    expect(state.suggestions[CARD]).toMatchObject({
+      state: 'none',
+      saw: '',
+      heard: '',
+    });
+    expect(state.suggestions[CARD]!.name).toBeUndefined();
+    expect(state.suggestions[CARD]!.note).toBe(
+      'It is “Trailer 01 (2 min)”, “Making Of” played one after another, so it is a second copy of them, not an extra of its own.',
+    );
+    expect(state.suggestions[CARD]!.seconds).toBe(1200);
+    // The others are matched as always.
+    expect(state.suggestions[BLANK]?.state).toBe('none');
+  });
+
+  test('a long reel is named by its first and last parts', async () => {
+    const parts = [1, 2, 3, 4].map(
+      (n) => `_converted/${MOVIE}/Trailers/Extra 0${n}.mkv`,
+    );
+    for (const part of parts) await write(part);
+    const reels = async () => [{ path: CARD, parts }];
+    const { state, finished } = await startMatch(
+      dir,
+      MOVIE,
+      deps({ reels, look: async (r) => LOOKS[r] ?? LOOKS[BLANK]! }),
+    );
+    await finished;
+    expect(state.suggestions[CARD]!.note).toContain(
+      '“Extra 01” to “Extra 04” played one after another',
+    );
+  });
+
+  test('what it would have taken is left for the extra that has it', async () => {
+    // Without the reel, two extras that both read as the same name are taken back from both.
+    const twin = `_converted/${MOVIE}/Featurettes/Featurette 02 (20 min).mkv`;
+    await write(twin);
+    LOOKS[twin] = LOOKS[CARD]!;
+    try {
+      const both = await startMatch(
+        dir,
+        MOVIE,
+        deps({ look: async (r) => LOOKS[r]! }),
+      );
+      await both.finished;
+      expect(both.state.suggestions[twin]!.state).not.toBe('matched');
+      clearMatches();
+      const reels = async () => [{ path: CARD, parts: [BLANK, NAMED] }];
+      const one = await startMatch(
+        dir,
+        MOVIE,
+        deps({ reels, look: async (r) => LOOKS[r]! }),
+      );
+      await one.finished;
+      expect(one.state.suggestions[twin]).toMatchObject({
+        state: 'matched',
+        name: 'The Not-So-Scary World of Bats',
+      });
+    } finally {
+      delete LOOKS[twin];
+    }
+  });
+
+  test('a reel as long as a listed feature does not share it with the extra that is that feature', async () => {
+    LENGTHS[CARD] = 121; // the same length as the trailer, by chance
+    try {
+      const sources = async () => [COMPARE];
+      const reels = async () => [{ path: CARD, parts: [BLANK, NAMED] }];
+      const without = await startMatch(dir, MOVIE, deps({ sources }));
+      await without.finished;
+      expect(without.state.suggestions[BLANK]!.state).toBe('unsure');
+      clearMatches();
+      const withReel = await startMatch(dir, MOVIE, deps({ sources, reels }));
+      await withReel.finished;
+      expect(withReel.state.suggestions[BLANK]).toMatchObject({
+        state: 'matched',
+        name: 'Theatrical Trailer',
+      });
+    } finally {
+      LENGTHS[CARD] = 1200;
+    }
+  });
+
+  test('a reel that is not among the unnamed extras, or a lookup that fails, changes nothing', async () => {
+    const named = await startMatch(
+      dir,
+      MOVIE,
+      deps({ reels: async () => [{ path: NAMED, parts: [BLANK] }] }),
+    );
+    await named.finished;
+    expect(named.state.suggestions[CARD]?.state).toBe('matched');
+    expect(named.state.suggestions[NAMED]).toBeUndefined();
+    clearMatches();
+    const broken = await startMatch(
+      dir,
+      MOVIE,
+      deps({
+        reels: async () => {
+          throw new Error('not known');
+        },
+      }),
+    );
+    await broken.finished;
+    expect(broken.state.status).toBe('done');
+    expect(broken.state.suggestions[CARD]?.state).toBe('matched');
+  });
+});
+
 describe('the listener client', () => {
   const reply = (body: unknown, status = 200) =>
     (async () =>
