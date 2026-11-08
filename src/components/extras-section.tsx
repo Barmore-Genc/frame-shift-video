@@ -6,6 +6,7 @@ import { MatchMovie } from '@/components/match-movie';
 import {
   useDiscExtras,
   useExtraDuplicates,
+  useRemoveIdenticalExtras,
   useExtraMatch,
   useRemoveExtras,
   useRemovedExtras,
@@ -496,6 +497,7 @@ function MovieExtras({
   const { data } = useExtraMatch(movie.movie);
   const duplicates = useExtraDuplicates(movie.movie, movie.items.length > 1);
   const remove = useRemoveExtras();
+  const removeIdentical = useRemoveIdenticalExtras();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const anyUnnamed = movie.items.some((i) => i.unnamed);
   const paths = movie.items.map((i) => i.path);
@@ -571,7 +573,40 @@ function MovieExtras({
         >
           Remove selected{count > 0 ? ` (${count})` : ''}
         </button>
+        <button
+          type="button"
+          className={button}
+          disabled={movie.items.length < 2 || removeIdentical.isPending}
+          onClick={() => removeIdentical.mutate(movie.movie)}
+        >
+          {removeIdentical.isPending
+            ? 'Looking for exact copies…'
+            : 'Remove exact copies'}
+        </button>
       </div>
+      {removeIdentical.data && (
+        <p
+          role="status"
+          className="mt-2 text-sm text-gray-700 dark:text-gray-300"
+        >
+          {removeIdentical.data.removed.length === 0
+            ? 'No two extras are exactly the same file.'
+            : `Kept one of each exact copy and moved ${removeIdentical.data.removed.length} to the Removed tab, where ${removeIdentical.data.removed.length === 1 ? 'it' : 'they'} can be put back.`}
+        </p>
+      )}
+      {removeIdentical.error && (
+        <p role="alert" className="mt-1 text-sm text-red-600 dark:text-red-400">
+          {removeIdentical.error.message}
+        </p>
+      )}
+      {removeIdentical.data && removeIdentical.data.failed.length > 0 && (
+        <p role="alert" className="mt-1 text-sm text-red-600 dark:text-red-400">
+          Could not remove {removeIdentical.data.failed.length}:{' '}
+          {removeIdentical.data.failed
+            .map((f) => `${nameOf(f.path)} (${f.error})`)
+            .join(', ')}
+        </p>
+      )}
       {remove.data && remove.data.removed.length > 0 && (
         <p
           role="status"

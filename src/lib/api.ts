@@ -969,6 +969,29 @@ export async function removeDiscExtras(paths: string[]): Promise<{
 }
 
 /**
+ * Keep one of each set of extras whose files are exactly the same; the others are moved to _removed
+ */
+export async function removeIdenticalExtras(movie: string): Promise<{
+  kept: string[];
+  removed: string[];
+  failed: { path: string; error: string }[];
+}> {
+  const response = await fetch(`${API_BASE}/discs/extras/remove-identical`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ movie }),
+  });
+  if (!response.ok) {
+    throw await discError(response, 'Failed to remove the exact copies');
+  }
+  return (await response.json()) as {
+    kept: string[];
+    removed: string[];
+    failed: { path: string; error: string }[];
+  };
+}
+
+/**
  * The extras that were taken out of movies
  */
 export async function fetchRemovedExtras(): Promise<RemovedExtra[]> {
