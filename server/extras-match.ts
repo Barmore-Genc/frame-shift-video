@@ -364,7 +364,20 @@ export function matchExtra(
   }
   if (real.length > 0) {
     const long = `${clock(seconds!)}`;
-    const textName = text?.strong ? text.candidate : null;
+    let textName = text?.strong ? text.candidate : null;
+    // A name the disc menu gives the exact length of, that this extra is nowhere near as long as, is
+    // no match whatever was said in it (an episode can say a song's name), when the extra is exactly
+    // the length of another listed one: the exact length decides.
+    if (
+      textName &&
+      !real.includes(textName) &&
+      textName.sources.includes('DVD menu') &&
+      textName.seconds !== null &&
+      Math.abs(seconds! - textName.seconds) > NEAR_SECONDS &&
+      real.some((n) => n.sources.includes('DVD menu'))
+    ) {
+      textName = null;
+    }
     if (textName && real.includes(textName)) {
       return {
         ...base,
@@ -395,6 +408,9 @@ export function matchExtra(
           note: `Looks like “${only.name}”: it is ${long} long, the only feature of that length ${where(only)} lists (${clock(only.seconds!)}).`,
         };
       }
+      // Shown the ratings card before movie previews: a reel of previews that happens to be as long as
+      // a listed feature, which another extra is more likely to be.
+      if (previewCard) return previewReel(base);
       return {
         ...base,
         state: 'unsure',
