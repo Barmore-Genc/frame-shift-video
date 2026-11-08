@@ -5,6 +5,7 @@ import path from 'path';
 import {
   clearCopiesCache,
   findCopies,
+  keptCopies,
   REFRESH_MS,
   warmCopies,
 } from '../../server/extras-copies';
@@ -190,5 +191,27 @@ describe('warming the copies and reels of a movie ahead of a page', () => {
     );
     expect(await findCopies(dir, MOVIE, { search })).toEqual(ANSWER);
     expect(calls.n).toBe(3);
+  });
+});
+
+describe('what is kept, without searching', () => {
+  test('nothing before a search, then the answer, then nothing once it is old or the extras changed', async () => {
+    const { calls, search } = counting();
+    const start = Date.now();
+    expect(await keptCopies(dir, MOVIE, start)).toBeNull();
+    await findCopies(dir, MOVIE, { search, now: start });
+    expect(await keptCopies(dir, MOVIE, start + 1000)).toEqual(ANSWER);
+    expect(await keptCopies(dir, MOVIE, start + 61 * 60 * 1000)).toBeNull();
+    await place(`_converted/${MOVIE}/Other/Extra 03.mkv`, 'three');
+    expect(await keptCopies(dir, MOVIE, start + 1000)).toBeNull();
+    expect(calls.n).toBe(1); // it never searched
+  });
+
+  test('a search still going is not waited for', async () => {
+    const { search } = counting(ANSWER, 50);
+    const going = findCopies(dir, MOVIE, { search });
+    expect(await keptCopies(dir, MOVIE)).toBeNull();
+    await going;
+    expect(await keptCopies(dir, MOVIE)).toEqual(ANSWER);
   });
 });

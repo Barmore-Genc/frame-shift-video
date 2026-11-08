@@ -13,8 +13,15 @@ import { readExtras } from './extras-state';
 import { ListenerUnavailable, lookAt } from './extras-eyes';
 import { extraFilePath } from './extras-state';
 import { videoSeconds } from './extras-preview';
+import { keptCopies } from './extras-copies';
+import type { Reel } from './extras-reels';
 import { nameSources } from './extras-sources';
-import { candidatesFrom, matchMovie, type Look } from './extras-match';
+import {
+  candidatesFrom,
+  matchMovie,
+  type Look,
+  type Suggestion,
+} from './extras-match';
 import type { ExtraMatch, NameSource } from '../src/types/discs';
 
 const MAX_MOVIES = 50;
@@ -24,6 +31,8 @@ export interface Deps {
   look: (relative: string) => Promise<Look>;
   sources: (movie: string) => Promise<NameSource[]>;
   seconds: (dir: string, relative: string) => Promise<number | null>;
+  /** The extras of the movie that are other extras played in a row, when that is known (never waited for) */
+  reels?: (dir: string, movie: string) => Promise<Reel[]>;
 }
 
 const realDeps: Deps = {
@@ -31,6 +40,7 @@ const realDeps: Deps = {
   sources: (m) => nameSources(m),
   seconds: async (dir, relative) =>
     videoSeconds(await extraFilePath(dir, relative)).catch(() => null),
+  reels: async (dir, movie) => (await keptCopies(dir, movie))?.reels ?? [],
 };
 
 const jobs = new Map<string, ExtraMatch>();
@@ -104,19 +114,45 @@ export async function startMatch(
       const sources = await deps.sources(movie);
       const names = candidatesFrom(sources);
       state.sources = [...new Set(sources.map((s) => s.source))];
+      // An extra that is other extras played in a row is not an extra of its own: it is not
+      // matched with a name (it would only take one from a part) and is not listened to.
+      const reelNotes: Record<string, Suggestion> = {};
+      const nameOf = (p: string) =>
+        found.items.find((i) => i.path === p)?.name ?? p;
+      for (const reel of (await deps.reels?.(dir, movie).catch(() => [])) ??
+        []) {
+        if (!items.some((i) => i.path === reel.path)) continue;
+        const parts = reel.parts.map(nameOf);
+        reelNotes[reel.path] = {
+          state: 'none',
+          seconds: lengths[reel.path] ?? null,
+          note: `It is ${
+            parts.length > 3
+              ? `“${parts[0]}” to “${parts[parts.length - 1]}”`
+              : parts.map((n) => `“${n}”`).join(', ')
+          } played one after another, so it is a second copy of them, not an extra of its own.`,
+          saw: '',
+          heard: '',
+        };
+      }
+      const alone = items.filter((i) => !reelNotes[i.path]);
       const decide = () => {
-        state.suggestions = matchMovie(
-          items.map((i) => ({
-            path: i.path,
-            seconds: lengths[i.path] ?? null,
-            look: looks[i.path] ?? null,
-          })),
-          names,
-        );
+        state.suggestions = {
+          ...matchMovie(
+            alone.map((i) => ({
+              path: i.path,
+              seconds: lengths[i.path] ?? null,
+              look: looks[i.path] ?? null,
+            })),
+            names,
+          ),
+          ...reelNotes,
+        };
       };
+      state.done += items.length - alone.length;
       // By length first: it needs no listening, so the page has answers straight away.
       decide();
-      for (const item of items) {
+      for (const item of alone) {
         try {
           looks[item.path] = await looked(dir, item.path, deps);
         } catch (error) {
