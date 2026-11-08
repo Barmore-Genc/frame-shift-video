@@ -1,3 +1,4 @@
+import { namesHeard } from '@/lib/names-heard';
 import { useState } from 'react';
 import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { CollapsibleCard } from '@/components/collapsible-card';
@@ -114,6 +115,9 @@ function Suggestion({
   suggestion: ExtraSuggestion;
   onUse: () => void;
 }) {
+  // What was said, read for names: a hint when there is no clear name yet, so not for a clear one.
+  const names =
+    suggestion.state === 'matched' ? [] : namesHeard(suggestion.heard);
   const tone =
     suggestion.state === 'matched'
       ? 'text-green-700 dark:text-green-400'
@@ -123,6 +127,11 @@ function Suggestion({
   return (
     <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-600 p-2">
       <p className={`text-sm ${tone}`}>{suggestion.note}</p>
+      {names.length > 0 && (
+        <p className="mt-1 text-sm text-gray-800 dark:text-gray-200">
+          Names said in it: {names.join(' · ')}
+        </p>
+      )}
       {suggestion.name && (
         <button
           type="button"
