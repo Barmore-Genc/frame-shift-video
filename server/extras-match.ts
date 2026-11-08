@@ -11,6 +11,7 @@
  * they still have something to go on. Nothing is renamed by this; a person presses a button.
  */
 
+import { trailerTitle } from '../src/lib/names-heard';
 import type { FandomHint, NameEntry, NameSource } from '../src/types/discs';
 
 export interface Look {
@@ -294,6 +295,17 @@ function previewReel(base: {
   saw: string;
   heard: string;
 }): Suggestion {
+  // A preview says the film it advertises, more than once: that is its name.
+  const title = trailerTitle(base.heard);
+  if (title) {
+    return {
+      ...base,
+      state: 'unsure',
+      name: title.title,
+      kind: 'Trailers',
+      note: `It starts with the ratings card shown before movie previews, and “${title.title}” is said ${title.times} times in it, so it is probably the preview for that movie.`,
+    };
+  }
   return {
     ...base,
     state: 'unsure',
@@ -419,6 +431,7 @@ export function matchExtra(
         note: `It is ${long} long, the length of “${only.name}”, but ${others === 1 ? 'another extra is' : `${others} other extras are`} that length too, so length alone cannot tell which is which.`,
       };
     }
+    if (previewCard && trailerTitle(heard)) return previewReel(base);
     return {
       ...base,
       state: 'unsure',
@@ -468,7 +481,7 @@ export function matchExtra(
             (a, b) =>
               Math.abs(seconds - a.seconds!) - Math.abs(seconds - b.seconds!),
           )[0];
-  if (closest) {
+  if (closest && !(previewCard && trailerTitle(heard))) {
     return {
       ...base,
       state: 'unsure',

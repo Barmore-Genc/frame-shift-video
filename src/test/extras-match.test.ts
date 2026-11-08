@@ -526,6 +526,78 @@ describe('a reel of previews', () => {
     expect(answer.saw).toContain('FOLLOWING PREVIEW');
   });
 
+  test('a preview that says its film is named for it, not "Previews"', () => {
+    const look: Look = {
+      seconds: 91,
+      ocr: [{ t: 1, lines: ['THE FOLLOWING PREVIEW HAS BEEN APPROVED FOR'] }],
+      speech: [
+        {
+          start: 0,
+          end: 80,
+          text: 'In a spectacular digital presentation. The Aladdin Special Edition on Disney DVD. With bonus features. The Aladdin Special Edition to Disc DVD. Coming October.',
+        },
+      ],
+    };
+    const answer = matchExtra(ev(look, 91), []);
+    expect(answer).toMatchObject({
+      state: 'unsure',
+      name: 'The Aladdin Special Edition',
+      kind: 'Trailers',
+    });
+    expect(answer.note).toContain('said 2 times');
+  });
+
+  test('that film beats a listed feature that is only close in length', () => {
+    const look: Look = {
+      seconds: 90,
+      ocr: [{ t: 1, lines: ['THE FOLLOWING PREVIEW HAS BEEN APPROVED FOR'] }],
+      speech: [
+        {
+          start: 0,
+          end: 80,
+          text: 'Every man must serve. Now Mulan returns in a special edition. You see all of Mulan like never before. Coming October.',
+        },
+      ],
+    };
+    const list = candidatesFrom([
+      {
+        source: 'DVD Compare',
+        page: 'x',
+        url: 'x',
+        features: [{ text: 'Mambo Del Perro', depth: 1, seconds: 98 }],
+      },
+    ]);
+    expect(matchExtra(ev(look, 90), list).name).toBe('Mulan');
+  });
+
+  test('that film also beats several listed features that are all about its length', () => {
+    const look: Look = {
+      seconds: 90,
+      ocr: [{ t: 1, lines: ['THE FOLLOWING PREVIEW HAS BEEN APPROVED FOR'] }],
+      speech: [
+        {
+          start: 0,
+          end: 80,
+          text: 'Every man must serve. Now Mulan returns in a special edition. You see all of Mulan like never before. Coming October.',
+        },
+      ],
+    };
+    const list = candidatesFrom([
+      {
+        source: 'DVD Compare',
+        page: 'x',
+        url: 'x',
+        features: [
+          { text: 'Mambo Del Perro', depth: 1, seconds: 90 },
+          { text: 'Small But Mighty', depth: 1, seconds: 91 },
+        ],
+      },
+    ]);
+    const answer = matchExtra(ev(look, 90), list);
+    expect(answer.name).toBe('Mulan');
+    expect(answer.kind).toBe('Trailers');
+  });
+
   test('it is the answer when the databases list names but none fits', () => {
     const answer = matchExtra(ev(DANCE_FLICK, 556), candidates(LION_KING));
     expect(answer.name).toBe('Previews');
