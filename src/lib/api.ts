@@ -910,10 +910,14 @@ export async function fetchDiscExtras(): Promise<ExtraMovie[]> {
 /**
  * What every database lists as the bonus features of a movie's disc, with the lengths they give
  */
-export async function fetchExtraSources(movie: string): Promise<NameSource[]> {
-  const response = await fetch(
-    `${API_BASE}/discs/extras/sources?${new URLSearchParams({ movie })}`,
-  );
+export async function fetchExtraSources(
+  movie: string,
+  refresh: boolean = false,
+): Promise<NameSource[]> {
+  const params = new URLSearchParams({ movie });
+  // Asks every database again instead of using the list the server kept (it keeps one for an hour).
+  if (refresh) params.set('refresh', '1');
+  const response = await fetch(`${API_BASE}/discs/extras/sources?${params}`);
   if (!response.ok) {
     throw await discError(response, 'Failed to look the movie up');
   }

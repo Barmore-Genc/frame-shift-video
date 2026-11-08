@@ -29,7 +29,7 @@ import { findCopies, pictureDeps } from '../extras-copies';
 import { frameJpeg, previewTimes, videoSeconds } from '../extras-preview';
 import { fandomHint } from '../fandom-hints';
 import { matchState, startMatch } from '../extras-match-job';
-import { nameSources } from '../extras-sources';
+import { forgetSources, nameSources } from '../extras-sources';
 import type { DiscCommand, DiscNext } from '../../src/types/discs';
 
 function json(
@@ -437,6 +437,9 @@ export async function discsExtrasSourcesHandler(
   if (!movie || movie.length > 150) {
     return json({ error: 'movie is needed' }, 400, corsHeaders);
   }
+  // "refresh=1": the person wants the databases asked again, not the list kept from earlier.
+  if (new URL(req.url).searchParams.get('refresh') === '1')
+    forgetSources(movie);
   return json({ sources: await nameSources(movie) }, 200, corsHeaders);
 }
 

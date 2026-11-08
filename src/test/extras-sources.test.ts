@@ -11,6 +11,7 @@ import {
   clearSourceCache,
   fromCompare,
   fromFandom,
+  forgetSources,
   fromMenu,
   nameSources,
   titleAndYear,
@@ -544,5 +545,66 @@ describe('asking the listener for DVD Compare', () => {
         'http://x',
       ),
     ).rejects.toThrow('Could not look');
+  });
+});
+
+describe('asking again on purpose', () => {
+  const deps = (over: Partial<SourceDeps> = {}): SourceDeps => ({
+    compare: async () => ({ found: false }),
+    discdb: async () => [],
+    fandom: async () => FANDOM,
+    menu: async () => ({ found: false }),
+    ...over,
+  });
+
+  test('a movie that is forgotten is asked about again, and the others are kept', async () => {
+    let fandom = 0;
+    const counting = deps({
+      fandom: async () => {
+        fandom++;
+        return FANDOM;
+      },
+    });
+    await nameSources('Duma (2005)', counting);
+    await nameSources('Other (1999)', counting);
+    await nameSources('Duma (2005)', counting);
+    expect(fandom).toBe(2); // the second look at Duma used what was kept
+    forgetSources('Duma (2005)');
+    await nameSources('Duma (2005)', counting);
+    expect(fandom).toBe(3);
+    await nameSources('Other (1999)', counting);
+    expect(fandom).toBe(3); // Other was not forgotten
+  });
+
+  test('the route gives what was kept, and asks again when told to refresh', async () => {
+    const { discsExtrasSourcesHandler } =
+      await import('../../server/handlers/discs');
+    const realFetch = globalThis.fetch;
+    // Nothing the route asks for is reachable: whatever it finds on its own is empty.
+    globalThis.fetch = (async () => {
+      throw new Error('offline');
+    }) as unknown as typeof fetch;
+    try {
+      await nameSources('Duma (2005)', deps()); // kept: the Fandom list
+      const ask = async (extra = '') =>
+        (
+          (await (
+            await discsExtrasSourcesHandler(
+              new Request(
+                `http://x/api?movie=${encodeURIComponent('Duma (2005)')}${extra}`,
+              ),
+              {},
+            )
+          ).json()) as { sources: { source: string }[] }
+        ).sources.map((s) => s.source);
+      expect(await ask()).toEqual(['DVD Fandom']);
+      // With "refresh=1" the kept list is forgotten and the databases (offline here) are asked.
+      expect(await ask('&refresh=1')).toEqual([]);
+      // Another value is not a refresh: nothing is kept after that, so it also asks (and finds none).
+      await nameSources('Duma (2005)', deps());
+      expect(await ask('&refresh=0')).toEqual(['DVD Fandom']);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });
