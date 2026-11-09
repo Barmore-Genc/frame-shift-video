@@ -77,6 +77,28 @@ describe('planSegments', () => {
     const plan = planSegments([{ start: 660, end: 661 }], 1320, options);
     expect(plan.complete).toBe(false);
   });
+  test('ignores black screens inside the edge margin, even close to an even split', () => {
+    // 300 s, two episodes: an even split is 150 s, but 100 s is inside the opening margin.
+    const plan = planSegments([{ start: 100, end: 101 }], 300, {
+      ...DEFAULT_SPLIT_OPTIONS,
+      episodes: 2,
+    });
+    expect(plan.complete).toBe(false);
+    const late = planSegments([{ start: 200, end: 201 }], 300, {
+      ...DEFAULT_SPLIT_OPTIONS,
+      episodes: 2,
+    });
+    expect(late.complete).toBe(false);
+  });
+  test('ignores a black screen farther from an even split than the tolerance', () => {
+    const options = { ...DEFAULT_SPLIT_OPTIONS, episodes: 2 };
+    expect(
+      planSegments([{ start: 700, end: 701 }], 1000, options).complete,
+    ).toBe(false);
+    expect(
+      planSegments([{ start: 600, end: 601 }], 1000, options).complete,
+    ).toBe(true);
+  });
   test('a single episode is the whole file', () => {
     const plan = planSegments([], 600, { ...options, episodes: 1 });
     expect(plan).toMatchObject({

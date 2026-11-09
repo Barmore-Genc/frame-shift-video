@@ -43,7 +43,12 @@ async function run(
   cmd: string[],
   options: { signal?: AbortSignal; onStderrLine?: (line: string) => void } = {},
 ): Promise<Process> {
-  const proc = Bun.spawn(cmd, { stdout: 'pipe', stderr: 'pipe' });
+  // The environment is passed on purpose: programs are looked up on the PATH as it is now.
+  const proc = Bun.spawn(cmd, {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: process.env,
+  });
   const abort = () => proc.kill();
   options.signal?.addEventListener('abort', abort);
   try {
@@ -116,13 +121,21 @@ export async function probe(file: string): Promise<ProbeResult> {
 export async function listVideos(target: string): Promise<string[]> {
   const stat = await fs.stat(target);
   if (stat.isFile()) return isVideoFile(target) ? [target] : [];
+  // Files this page writes itself (half-written, temporary, cleaned copies) are not sources.
+  const isLeftover = (name: string) =>
+    /\.(partial|fs-temp|cleaned)(\.|$)/i.test(name);
   const found: string[] = [];
   const walk = async (dir: string) => {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
       if (entry.name.startsWith('.')) continue;
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) await walk(full);
-      else if (entry.isFile() && isVideoFile(entry.name)) found.push(full);
+      else if (
+        entry.isFile() &&
+        isVideoFile(entry.name) &&
+        !isLeftover(entry.name)
+      )
+        found.push(full);
     }
   };
   await walk(target);

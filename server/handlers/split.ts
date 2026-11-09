@@ -40,6 +40,25 @@ async function readBody(req: Request): Promise<Record<string, unknown> | null> {
   }
 }
 
+/** A whole number from the body, or the fallback when it is missing or not a number. */
+function whole(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max = 1e6,
+): number {
+  const n = Number(value);
+  if (
+    value === undefined ||
+    value === null ||
+    value === '' ||
+    !Number.isFinite(n)
+  ) {
+    return fallback;
+  }
+  return Math.min(Math.max(Math.trunc(n), min), max);
+}
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -86,20 +105,23 @@ export async function splitPreviewHandler(
       Math.max(Number(body.episodesPerFile) || 2, 2),
       12,
     );
-    const frameOffset = Math.max(Number(body.frameOffset) || 0, 0);
+    const frameOffset = whole(body.frameOffset, 6, 0, 100);
     const naming = {
       show: typeof body.show === 'string' ? body.show : undefined,
-      season: Math.max(Number(body.season) || 1, 0),
-      startEpisode: Math.max(Number(body.startEpisode) || 1, 0),
+      season: whole(body.season, 1, 0),
+      startEpisode: whole(body.startEpisode, 1, 0),
       titles: parseTitles(String(body.titles ?? '')),
     };
     const results = [];
     let next = 0;
     for (const file of files) {
       const preview = await previewSplit(file, episodesPerFile, frameOffset);
+      // A file left alone still uses up its episode numbers, so the files after it keep theirs.
+      const first = next;
+      next += episodesPerFile;
       const episodes = preview.plan.complete
-        ? preview.plan.segments.map((segment) => ({
-            name: episodeName(naming, next++),
+        ? preview.plan.segments.map((segment, i) => ({
+            name: episodeName(naming, first + i),
             start: segment.start,
             end: segment.end,
           }))

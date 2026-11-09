@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Folder, FileVideo, CaretLeft } from '@phosphor-icons/react';
 import { useFiles } from '@/lib/api-hooks';
 
+const VIDEO_FILE = /\.(mkv|mp4|m4v|mov|avi|webm|ts)$/i;
+
 /**
  * A small file and folder chooser for the Split page. It browses the server's home folder (the
  * same listing the file picker uses) and reports a path relative to it; choosing a folder means
@@ -38,8 +40,9 @@ export function PathPicker({
           onClick={() => {
             setBrowsing(!browsing);
             if (!browsing && value) {
+              // A file opens its folder; anything else is taken as a folder.
               setFolder(
-                value.includes('.')
+                VIDEO_FILE.test(value)
                   ? value.slice(0, Math.max(value.lastIndexOf('/'), 0))
                   : value,
               );
@@ -83,28 +86,30 @@ export function PathPicker({
                 Could not read this folder
               </li>
             )}
-            {data?.items.map((item) => (
-              <li key={item.path}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (item.isDirectory) setFolder(item.path);
-                    else {
-                      onChange(item.path);
-                      setBrowsing(false);
-                    }
-                  }}
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
-                >
-                  {item.isDirectory ? (
-                    <Folder size={18} aria-hidden="true" />
-                  ) : (
-                    <FileVideo size={18} aria-hidden="true" />
-                  )}
-                  <span className="truncate">{item.name}</span>
-                </button>
-              </li>
-            ))}
+            {data?.items
+              .filter((item) => item.isDirectory || VIDEO_FILE.test(item.name))
+              .map((item) => (
+                <li key={item.path}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (item.isDirectory) setFolder(item.path);
+                      else {
+                        onChange(item.path);
+                        setBrowsing(false);
+                      }
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    {item.isDirectory ? (
+                      <Folder size={18} aria-hidden="true" />
+                    ) : (
+                      <FileVideo size={18} aria-hidden="true" />
+                    )}
+                    <span className="truncate">{item.name}</span>
+                  </button>
+                </li>
+              ))}
           </ul>
         </div>
       )}
