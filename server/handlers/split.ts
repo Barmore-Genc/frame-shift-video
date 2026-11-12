@@ -1,6 +1,7 @@
 import {
   DEFAULT_TRACK_OPTIONS,
   episodeName,
+  normalizeLanguage,
   parseLanguageList,
   parseTitles,
   resolveInHome,
@@ -64,14 +65,21 @@ function message(error: unknown): string {
 }
 
 function trackOptions(body: Record<string, unknown>): TrackOptions {
-  const languages = parseLanguageList(String(body.languages ?? 'eng'));
+  // "languages" is the older single list, used for both kinds when the new ones are not sent.
+  const list = (value: unknown, fallback: string[]) => {
+    const parsed = parseLanguageList(String(value ?? ''));
+    return parsed.length ? parsed : fallback;
+  };
+  const shared = list(body.languages, DEFAULT_TRACK_OPTIONS.audioLanguages);
   return {
-    keepLanguages: languages.length
-      ? languages
-      : DEFAULT_TRACK_OPTIONS.keepLanguages,
+    audioLanguages: list(body.audioLanguages, shared),
+    subtitleLanguages: list(body.subtitleLanguages, shared),
     filterAudio: body.filterAudio !== false,
     filterSubtitles: body.filterSubtitles !== false,
     keepUntagged: body.keepUntagged === true,
+    orderByLanguage: body.orderByLanguage === true,
+    defaultAudio: normalizeLanguage(String(body.defaultAudio ?? '')),
+    defaultSubtitle: normalizeLanguage(String(body.defaultSubtitle ?? '')),
   };
 }
 

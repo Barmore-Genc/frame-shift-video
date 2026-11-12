@@ -292,9 +292,13 @@ const trackFile = (
   ],
   plan: {
     action,
-    reason: action === 'clean' ? 'Remove 1 track' : 'Nothing to remove',
+    reason: action === 'clean' ? 'Remove 1 track' : 'Nothing to change',
+    keepAudio: [1],
+    keepSubtitles: [3],
     removeAudio: action === 'clean' ? [2] : [],
     removeSubtitles: [],
+    defaults: [1, 3],
+    notes: [],
   },
 });
 
@@ -384,17 +388,22 @@ describe('Remove extra tracks tab', () => {
     show();
     openTracks();
     type('Path', 'd');
-    type(/Languages to keep/, 'eng, jpn');
+    type(/Audio languages to keep/, 'eng, jpn');
+    type(/Subtitle languages to keep/, 'eng');
     fireEvent.click(screen.getByLabelText('Filter subtitle tracks'));
     fireEvent.click(screen.getByLabelText(/Keep tracks with no language tag/));
     fireEvent.click(screen.getByRole('button', { name: /Check the tracks/ }));
     await screen.findByText('d/a.mkv');
     expect(posts('/api/split/tracks/preview')[0].body).toEqual({
       path: 'd',
-      languages: 'eng, jpn',
+      audioLanguages: 'eng, jpn',
+      subtitleLanguages: 'eng',
       filterAudio: true,
       filterSubtitles: false,
       keepUntagged: true,
+      orderByLanguage: false,
+      defaultAudio: '',
+      defaultSubtitle: '',
     });
 
     // The Japanese track (#2) is struck out in the file that will change; the others are not.
@@ -412,16 +421,20 @@ describe('Remove extra tracks tab', () => {
     expect(
       within(second).queryByText(/jpn/, { selector: '.line-through' }),
     ).toBeNull();
-    expect(within(second).getByText('Nothing to remove')).toBeInTheDocument();
+    expect(within(second).getByText('Nothing to change')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Clean 2 files' }));
     await screen.findByText(/Queued/);
     expect(posts('/api/split/tracks/run')[0].body).toEqual({
       paths: ['d/a.mkv', 'd/c.mkv'],
-      languages: 'eng, jpn',
+      audioLanguages: 'eng, jpn',
+      subtitleLanguages: 'eng',
       filterAudio: true,
       filterSubtitles: false,
       keepUntagged: true,
+      orderByLanguage: false,
+      defaultAudio: '',
+      defaultSubtitle: '',
       replace: false,
     });
   });
@@ -444,6 +457,153 @@ describe('Remove extra tracks tab', () => {
     expect(posts('/api/split/tracks/run')[0].body.replace).toBe(true);
   });
 
+  test('presets fill the fields, and what they say is what is sent', async () => {
+    routes['/api/split/tracks/preview'] = () => ({
+      files: [trackFile('a.mkv', 'clean')],
+    });
+    show();
+    openTracks();
+    type('Path', 'a.mkv');
+    fireEvent.click(
+      screen.getByRole('button', { name: /Dual audio, French first/ }),
+    );
+    expect(scope().getByLabelText(/Audio languages to keep/)).toHaveValue(
+      'fra, eng',
+    );
+    expect(scope().getByLabelText(/Subtitle languages to keep/)).toHaveValue(
+      'eng',
+    );
+    expect(scope().getByLabelText(/Default audio language/)).toHaveValue('fra');
+    expect(scope().getByLabelText(/Default subtitles/)).toHaveValue('none');
+    expect(
+      scope().getByLabelText(/in the order of the language lists/),
+    ).toBeChecked();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /French only, English subtitles on/ }),
+    );
+    expect(scope().getByLabelText(/Audio languages to keep/)).toHaveValue(
+      'fra',
+    );
+    expect(scope().getByLabelText(/Default subtitles/)).toHaveValue('eng');
+
+    fireEvent.click(screen.getByRole('button', { name: /^English only/ }));
+    expect(scope().getByLabelText(/Audio languages to keep/)).toHaveValue(
+      'eng',
+    );
+    expect(scope().getByLabelText(/Default audio language/)).toHaveValue('eng');
+    expect(scope().getByLabelText(/Default subtitles/)).toHaveValue('');
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Dual audio, French first/ }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Check the tracks/ }));
+    await screen.findByText('a.mkv');
+    expect(posts('/api/split/tracks/preview')[0].body).toEqual({
+      path: 'a.mkv',
+      audioLanguages: 'fra, eng',
+      subtitleLanguages: 'eng',
+      filterAudio: true,
+      filterSubtitles: true,
+      keepUntagged: false,
+      orderByLanguage: true,
+      defaultAudio: 'fra',
+      defaultSubtitle: 'none',
+    });
+  });
+
+  test('typing a default audio and subtitle language sends them', async () => {
+    routes['/api/split/tracks/preview'] = () => ({
+      files: [trackFile('a.mkv', 'clean')],
+    });
+    show();
+    openTracks();
+    type('Path', 'a.mkv');
+    fireEvent.click(scope().getByLabelText('Filter audio tracks'));
+    type(/Default audio language/, 'jpn');
+    type(/Default subtitles/, 'none');
+    fireEvent.click(screen.getByRole('button', { name: /Check the tracks/ }));
+    await screen.findByText('a.mkv');
+    expect(posts('/api/split/tracks/preview')[0].body).toMatchObject({
+      filterAudio: false,
+      defaultAudio: 'jpn',
+      defaultSubtitle: 'none',
+    });
+  });
+
+  test('shows what the file will hold, which are default now, and any note', async () => {
+    routes['/api/split/tracks/preview'] = () => ({
+      files: [
+        {
+          path: 'ep.mp4',
+          streams: [
+            { index: 0, type: 'video' },
+            {
+              index: 1,
+              type: 'audio',
+              codec: 'eac3',
+              language: 'eng',
+              default: true,
+            },
+            {
+              index: 2,
+              type: 'audio',
+              codec: 'eac3',
+              language: 'fra',
+              default: false,
+            },
+            {
+              index: 3,
+              type: 'subtitle',
+              codec: 'mov_text',
+              language: 'eng',
+              default: true,
+            },
+          ],
+          plan: {
+            action: 'clean',
+            reason: 'Reorder tracks, Change default tracks',
+            keepAudio: [2, 1],
+            keepSubtitles: [3],
+            removeAudio: [],
+            removeSubtitles: [],
+            defaults: [2, 3],
+            notes: [
+              'MP4 always plays its first subtitle track; use an MKV to keep subtitles off by default',
+            ],
+          },
+        },
+      ],
+    });
+    show();
+    openTracks();
+    type('Path', 'ep.mp4');
+    fireEvent.click(screen.getByRole('button', { name: /Check the tracks/ }));
+    await screen.findByText('ep.mp4');
+    expect(
+      screen.getByText('Audio: fra (default), eng · Subtitles: eng (default)'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/MP4 always plays its first subtitle/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/audio #1 · eng · eac3 · default now/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/audio #2 · fra · eac3$/)).toBeInTheDocument();
+  });
+
+  test('a file already as wanted does not show a result line', async () => {
+    routes['/api/split/tracks/preview'] = () => ({
+      files: [trackFile('a.mkv', 'already-clean')],
+    });
+    show();
+    openTracks();
+    type('Path', 'a.mkv');
+    fireEvent.click(screen.getByRole('button', { name: /Check the tracks/ }));
+    await screen.findByText('Nothing to change');
+    expect(screen.queryByText(/^Audio: /)).toBeNull();
+  });
+
   test('a skipped file shows nothing struck out, since it will not be changed', async () => {
     routes['/api/split/tracks/preview'] = () => ({
       files: [
@@ -452,6 +612,10 @@ describe('Remove extra tracks tab', () => {
           plan: {
             action: 'skip-no-audio',
             reason: 'No audio in the languages to keep',
+            keepAudio: [],
+            keepSubtitles: [],
+            defaults: [],
+            notes: [],
             removeAudio: [1, 2],
             removeSubtitles: [3],
           },

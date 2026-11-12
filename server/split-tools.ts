@@ -270,6 +270,8 @@ export interface StreamInfo {
   codec?: string;
   language?: string;
   title?: string;
+  /** Whether the file marks this track as the one to play by default. */
+  default?: boolean;
 }
 
 const LANGUAGE_ALIASES: Record<string, string> = {
@@ -312,77 +314,196 @@ export function parseLanguageList(text: string): string[] {
 }
 
 export interface TrackOptions {
-  /** Languages to keep, e.g. ['eng']. */
-  keepLanguages: string[];
-  /** Whether to strip audio tracks / subtitle tracks that are not in those languages. */
+  /** Audio languages to keep, in the order they should appear, e.g. ['fra', 'eng']. */
+  audioLanguages: string[];
+  /** Subtitle languages to keep, in the order they should appear. */
+  subtitleLanguages: string[];
+  /** Whether to strip audio / subtitle tracks that are not in those languages. */
   filterAudio: boolean;
   filterSubtitles: boolean;
   /** Keep tracks that have no language tag at all. */
   keepUntagged: boolean;
+  /** Put kept tracks in the order of the language lists above (otherwise the file's order stays). */
+  orderByLanguage: boolean;
+  /** Language of the audio track to play by default; empty leaves the file's choice alone. */
+  defaultAudio: string;
+  /** Subtitles on by default: empty leaves the file alone, 'none' turns them all off by default,
+   * anything else is the language of the one that is on. */
+  defaultSubtitle: string;
 }
 
 export const DEFAULT_TRACK_OPTIONS: TrackOptions = {
-  keepLanguages: ['eng'],
+  audioLanguages: ['eng'],
+  subtitleLanguages: ['eng'],
   filterAudio: true,
   filterSubtitles: true,
   keepUntagged: false,
+  orderByLanguage: false,
+  defaultAudio: '',
+  defaultSubtitle: '',
 };
+
+export { TRACK_PRESETS } from '../src/lib/track-presets';
 
 export type TrackAction = 'clean' | 'already-clean' | 'skip-no-audio';
 
 export interface TrackPlan {
   action: TrackAction;
+  /** Kept tracks, in the order they will be written. */
   keepAudio: number[];
   keepSubtitles: number[];
   removeAudio: number[];
   removeSubtitles: number[];
+  /** Which kept tracks will have the default flag in the result. */
+  defaults: number[];
   reason: string;
+  /** Things to know about this file's plan, e.g. what its container cannot do. */
+  notes: string[];
 }
 
-function keeps(stream: StreamInfo, options: TrackOptions): boolean {
+/** MP4-family files cannot have every subtitle track off by default: the first is always on. */
+export function isMp4Family(file: string): boolean {
+  return ['.mp4', '.m4v', '.mov'].includes(path.extname(file).toLowerCase());
+}
+
+function languageOf(stream: StreamInfo): string {
   const language = normalizeLanguage(stream.language);
-  if (!language || language === 'und') return options.keepUntagged;
-  return options.keepLanguages.includes(language);
+  return language === 'und' ? '' : language;
+}
+
+function keeps(
+  stream: StreamInfo,
+  languages: string[],
+  keepUntagged: boolean,
+): boolean {
+  const language = languageOf(stream);
+  return language ? languages.includes(language) : keepUntagged;
+}
+
+/** Kept tracks in the order of the language list; tracks of one language keep the file's order. */
+function ordered(
+  streams: StreamInfo[],
+  languages: string[],
+  byLanguage: boolean,
+): StreamInfo[] {
+  if (!byLanguage) return streams;
+  const rank = (s: StreamInfo) => {
+    const at = languages.indexOf(languageOf(s));
+    return at < 0 ? languages.length : at;
+  };
+  return streams
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i)
+    .map(({ s }) => s);
 }
 
 /**
- * Decide which audio and subtitle tracks stay. A file with no audio in a kept language is skipped
- * entirely rather than falling back to another language.
+ * Decide which audio and subtitle tracks stay, in what order, and which is the default of each
+ * kind. A file with no audio in a kept language is skipped entirely rather than falling back to
+ * another language. A file is "clean" (needs work) if anything differs from what was asked for.
  */
 export function planTracks(
   streams: StreamInfo[],
   options: TrackOptions,
+  /** The file's name, for what its container can do. */
+  file = '',
 ): TrackPlan {
   const audio = streams.filter((s) => s.type === 'audio');
   const subs = streams.filter((s) => s.type === 'subtitle');
-  const keepAudio = options.filterAudio
-    ? audio.filter((s) => keeps(s, options))
+  const audioKept = options.filterAudio
+    ? audio.filter((s) =>
+        keeps(s, options.audioLanguages, options.keepUntagged),
+      )
     : audio;
-  const keepSubs = options.filterSubtitles
-    ? subs.filter((s) => keeps(s, options))
+  const subsKept = options.filterSubtitles
+    ? subs.filter((s) =>
+        keeps(s, options.subtitleLanguages, options.keepUntagged),
+      )
     : subs;
-  const result = (action: TrackAction, reason: string): TrackPlan => ({
-    action,
-    reason,
-    keepAudio: keepAudio.map((s) => s.index),
-    keepSubtitles: keepSubs.map((s) => s.index),
+  const audioOut = ordered(
+    audioKept,
+    options.audioLanguages,
+    options.orderByLanguage,
+  );
+  const subsOut = ordered(
+    subsKept,
+    options.subtitleLanguages,
+    options.orderByLanguage,
+  );
+
+  // Which track gets the default flag. Unasked or not found means the file's own flags stay.
+  const wantAudio = normalizeLanguage(options.defaultAudio);
+  const audioDefault = wantAudio
+    ? audioOut.find((s) => languageOf(s) === wantAudio)
+    : undefined;
+  const wantSub = normalizeLanguage(options.defaultSubtitle);
+  const notes: string[] = [];
+  let subDefault =
+    wantSub && wantSub !== 'none'
+      ? subsOut.find((s) => languageOf(s) === wantSub)
+      : undefined;
+  if (wantSub === 'none' && subsOut.length > 0 && isMp4Family(file)) {
+    subDefault = subsOut[0];
+    notes.push(
+      'MP4 always plays its first subtitle track; use an MKV to keep subtitles off by default',
+    );
+  }
+  const changesAudio = !!audioDefault;
+  const changesSubs = wantSub === 'none' || !!subDefault;
+
+  const audioDefaults = audioOut.filter((s) =>
+    changesAudio ? s === audioDefault : !!s.default,
+  );
+  // If the default audio track was removed, the first one left takes its place.
+  if (
+    audioDefaults.length === 0 &&
+    audioOut.length > 0 &&
+    audio.some((s) => s.default)
+  ) {
+    audioDefaults.push(audioOut[0]);
+  }
+  const defaults = [
+    ...audioDefaults,
+    ...subsOut.filter((s) => (changesSubs ? s === subDefault : !!s.default)),
+  ].map((s) => s.index);
+
+  const base = {
+    keepAudio: audioOut.map((s) => s.index),
+    keepSubtitles: subsOut.map((s) => s.index),
     removeAudio: audio
-      .filter((s) => !keepAudio.includes(s))
+      .filter((s) => !audioKept.includes(s))
       .map((s) => s.index),
     removeSubtitles: subs
-      .filter((s) => !keepSubs.includes(s))
+      .filter((s) => !subsKept.includes(s))
       .map((s) => s.index),
-  });
+    defaults,
+    notes,
+  };
 
-  if (options.filterAudio && audio.length > 0 && keepAudio.length === 0) {
-    return result('skip-no-audio', 'No audio in the languages to keep');
+  if (options.filterAudio && audio.length > 0 && audioKept.length === 0) {
+    return {
+      ...base,
+      action: 'skip-no-audio',
+      reason: 'No audio in the languages to keep',
+    };
   }
-  if (keepAudio.length === audio.length && keepSubs.length === subs.length) {
-    return result('already-clean', 'Nothing to remove');
+
+  const removed = base.removeAudio.length + base.removeSubtitles.length;
+  const reordered =
+    audioOut.some((s, i) => s !== audioKept[i]) ||
+    subsOut.some((s, i) => s !== subsKept[i]);
+  const flagsDiffer = [...audioOut, ...subsOut].some(
+    (s) => !!s.default !== defaults.includes(s.index),
+  );
+  const parts: string[] = [];
+  if (removed > 0)
+    parts.push(`Remove ${removed} track${removed === 1 ? '' : 's'}`);
+  if (reordered) parts.push('Reorder tracks');
+  if (flagsDiffer) parts.push('Change default tracks');
+  if (parts.length === 0) {
+    return { ...base, action: 'already-clean', reason: 'Nothing to change' };
   }
-  const removed =
-    audio.length - keepAudio.length + (subs.length - keepSubs.length);
-  return result('clean', `Remove ${removed} track${removed === 1 ? '' : 's'}`);
+  return { ...base, action: 'clean', reason: parts.join(', ') };
 }
 
 /** Arguments for rewriting a file with only the planned tracks (no re-encoding). */
@@ -403,6 +524,16 @@ export function buildTrackArgs(
   ];
   for (const index of plan.keepAudio) args.push('-map', `0:${index}`);
   for (const index of plan.keepSubtitles) args.push('-map', `0:${index}`);
+  // Say each kept track's default flag out loud, so exactly the planned ones are on.
+  const flag = (kind: 'a' | 's', indexes: number[]) =>
+    indexes.forEach((index, n) =>
+      args.push(
+        `-disposition:${kind}:${n}`,
+        plan.defaults.includes(index) ? 'default' : '0',
+      ),
+    );
+  flag('a', plan.keepAudio);
+  flag('s', plan.keepSubtitles);
   args.push('-c', 'copy', output);
   return args;
 }

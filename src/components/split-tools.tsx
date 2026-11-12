@@ -13,6 +13,7 @@ import {
   type SplitTask,
   type TrackPreviewFile,
 } from '@/lib/split-api';
+import { TRACK_PRESETS } from '@/lib/track-presets';
 
 type Tab = 'episodes' | 'tracks';
 
@@ -305,63 +306,143 @@ function PreviewList({ files }: { files: SplitPreviewFile[] }) {
   );
 }
 
+const DEFAULT_TRACKS_FORM = {
+  audioLanguages: 'eng',
+  subtitleLanguages: 'eng',
+  filterAudio: true,
+  filterSubtitles: true,
+  keepUntagged: false,
+  orderByLanguage: false,
+  defaultAudio: '',
+  defaultSubtitle: '',
+};
+
 function TracksTab() {
   const [path, setPath] = useState('');
-  const [languages, setLanguages] = useState('eng');
-  const [filterAudio, setFilterAudio] = useState(true);
-  const [filterSubtitles, setFilterSubtitles] = useState(true);
-  const [keepUntagged, setKeepUntagged] = useState(false);
+  const [form, setForm] = useState(DEFAULT_TRACKS_FORM);
   const [replace, setReplace] = useState(false);
+  const set = <K extends keyof typeof DEFAULT_TRACKS_FORM>(
+    key: K,
+    value: (typeof DEFAULT_TRACKS_FORM)[K],
+  ) => setForm((old) => ({ ...old, [key]: value }));
 
   const preview = useTracksPreview();
   const run = useTracksRun();
-  const options = { languages, filterAudio, filterSubtitles, keepUntagged };
   const files = preview.data?.files;
   const toClean = files?.filter((f) => f.plan.action === 'clean') ?? [];
+
+  const usePreset = (id: string) => {
+    const preset = TRACK_PRESETS.find((p) => p.id === id);
+    if (!preset) return;
+    setForm((old) => ({
+      ...old,
+      filterAudio: true,
+      filterSubtitles: true,
+      audioLanguages: preset.settings.audioLanguages.join(', '),
+      subtitleLanguages: preset.settings.subtitleLanguages.join(', '),
+      orderByLanguage: preset.settings.orderByLanguage,
+      defaultAudio: preset.settings.defaultAudio,
+      defaultSubtitle: preset.settings.defaultSubtitle,
+    }));
+  };
 
   return (
     <Card>
       <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-        Remove extra tracks
+        Remove extra tracks and set the default ones
       </h2>
       <p className="text-sm text-gray-600 dark:text-gray-300">
-        Keeps only the audio and subtitle tracks in the languages you choose and
-        copies everything else untouched. A file with no audio in those
-        languages is skipped, never changed.
+        Keeps only the audio and subtitle tracks in the languages you choose,
+        puts them in order, and says which audio and subtitle track plays by
+        default, like MKVToolNix. Everything else is copied untouched. A file
+        with no audio in those languages is skipped, never changed.
       </p>
       <Field label="Video file or folder">
         <PathPicker value={path} onChange={setPath} />
       </Field>
-      <Field label="Languages to keep (comma separated, e.g. eng, jpn)">
-        <input
-          type="text"
-          value={languages}
-          onChange={(e) => setLanguages(e.target.value)}
-          className={inputClass}
-        />
-      </Field>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+          Presets
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {TRACK_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => usePreset(preset.id)}
+              className="min-h-[44px] px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 text-left"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <Field label="Audio languages to keep, in order (e.g. fra, eng)">
+          <input
+            type="text"
+            value={form.audioLanguages}
+            onChange={(e) => set('audioLanguages', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Subtitle languages to keep, in order">
+          <input
+            type="text"
+            value={form.subtitleLanguages}
+            onChange={(e) => set('subtitleLanguages', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Default audio language (empty: leave as is)">
+          <input
+            type="text"
+            value={form.defaultAudio}
+            onChange={(e) => set('defaultAudio', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Default subtitles: a language, none, or empty to leave as is">
+          <input
+            type="text"
+            value={form.defaultSubtitle}
+            onChange={(e) => set('defaultSubtitle', e.target.value)}
+            className={inputClass}
+          />
+        </Field>
+      </div>
       <div className="flex flex-wrap gap-x-6 gap-y-2 text-gray-800 dark:text-gray-100">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={filterAudio}
-            onChange={(e) => setFilterAudio(e.target.checked)}
+            checked={form.filterAudio}
+            onChange={(e) => set('filterAudio', e.target.checked)}
           />
           Filter audio tracks
         </label>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={filterSubtitles}
-            onChange={(e) => setFilterSubtitles(e.target.checked)}
+            checked={form.filterSubtitles}
+            onChange={(e) => set('filterSubtitles', e.target.checked)}
           />
           Filter subtitle tracks
         </label>
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={keepUntagged}
-            onChange={(e) => setKeepUntagged(e.target.checked)}
+            checked={form.orderByLanguage}
+            onChange={(e) => set('orderByLanguage', e.target.checked)}
+          />
+          Put tracks in the order of the language lists
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={form.keepUntagged}
+            onChange={(e) => set('keepUntagged', e.target.checked)}
           />
           Keep tracks with no language tag
         </label>
@@ -380,7 +461,7 @@ function TracksTab() {
           disabled={!path || preview.isPending}
           onClick={() => {
             run.reset();
-            preview.mutate({ path, ...options });
+            preview.mutate({ path, ...form });
           }}
         >
           {preview.isPending ? 'Reading the files…' : 'Check the tracks'}
@@ -391,7 +472,7 @@ function TracksTab() {
           onClick={() =>
             run.mutate({
               paths: toClean.map((f) => f.path),
-              ...options,
+              ...form,
               replace,
             })
           }
@@ -414,6 +495,18 @@ function TracksTab() {
   );
 }
 
+/** What the file will hold afterwards, e.g. "Audio: fra (default), eng · Subtitles: eng". */
+export function describeResult(file: TrackPreviewFile): string {
+  const name = (index: number) => {
+    const s = file.streams.find((x) => x.index === index);
+    const label = s?.language || 'no language';
+    return file.plan.defaults.includes(index) ? `${label} (default)` : label;
+  };
+  const list = (indexes: number[]) =>
+    indexes.length ? indexes.map(name).join(', ') : 'none';
+  return `Audio: ${list(file.plan.keepAudio)} · Subtitles: ${list(file.plan.keepSubtitles)}`;
+}
+
 function TrackList({ files }: { files: TrackPreviewFile[] }) {
   return (
     <ul className="flex flex-col gap-3">
@@ -424,6 +517,7 @@ function TrackList({ files }: { files: TrackPreviewFile[] }) {
             ? [...file.plan.removeAudio, ...file.plan.removeSubtitles]
             : [],
         );
+        const changing = file.plan.action === 'clean';
         return (
           <li
             key={file.path}
@@ -433,10 +527,23 @@ function TrackList({ files }: { files: TrackPreviewFile[] }) {
               {file.path}
             </div>
             <div
-              className={`text-sm ${file.plan.action === 'clean' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500'}`}
+              className={`text-sm ${changing ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500'}`}
             >
               {file.plan.reason}
             </div>
+            {changing && (
+              <div className="text-sm text-gray-700 dark:text-gray-200">
+                {describeResult(file)}
+              </div>
+            )}
+            {file.plan.notes.map((note) => (
+              <div
+                key={note}
+                className="text-sm text-amber-700 dark:text-amber-400"
+              >
+                {note}
+              </div>
+            ))}
             <ul className="mt-1 text-sm">
               {file.streams
                 .filter((s) => s.type === 'audio' || s.type === 'subtitle')
@@ -452,6 +559,7 @@ function TrackList({ files }: { files: TrackPreviewFile[] }) {
                     {s.type} #{s.index} · {s.language || 'no language'} ·{' '}
                     {s.codec}
                     {s.title ? ` · ${s.title}` : ''}
+                    {s.default ? ' · default now' : ''}
                   </li>
                 ))}
             </ul>

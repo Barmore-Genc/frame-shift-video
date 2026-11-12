@@ -2,6 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_SPLIT_OPTIONS,
   DEFAULT_TRACK_OPTIONS,
+  TRACK_PRESETS,
+  isMp4Family,
   buildSplitArgs,
   buildTrackArgs,
   cleanedPath,
@@ -223,6 +225,10 @@ describe('tracks', () => {
       '0:1',
       '-map',
       '0:3',
+      '-disposition:a:0',
+      '0',
+      '-disposition:s:0',
+      '0',
       '-c',
       'copy',
       'out.mkv',
@@ -231,5 +237,184 @@ describe('tracks', () => {
   test('temporary and side-by-side output names keep the extension', () => {
     expect(cleanedPath('/a/b.mkv', true)).toBe('/a/b.fs-temp.mkv');
     expect(cleanedPath('/a/b.mkv', false)).toBe('/a/b.cleaned.mkv');
+  });
+});
+
+describe('default tracks and order', () => {
+  // Like the raw Ladybug files: English first and on by default, French second, English subtitles on.
+  const raw: StreamInfo[] = [
+    { index: 0, type: 'video', default: true },
+    { index: 1, type: 'audio', language: 'eng', default: true },
+    { index: 2, type: 'audio', language: 'fra', default: false },
+    { index: 3, type: 'subtitle', language: 'eng', default: true },
+    { index: 4, type: 'subtitle', language: 'fra', default: false },
+  ];
+  const preset = (id: string) => ({
+    ...DEFAULT_TRACK_OPTIONS,
+    ...TRACK_PRESETS.find((p) => p.id === id)!.settings,
+  });
+
+  test('dual audio, French first: both audio kept, French first and default, subtitles off', () => {
+    const plan = planTracks(raw, preset('dual-french'));
+    expect(plan.action).toBe('clean');
+    expect(plan.keepAudio).toEqual([2, 1]);
+    expect(plan.keepSubtitles).toEqual([3]);
+    expect(plan.removeSubtitles).toEqual([4]);
+    expect(plan.defaults).toEqual([2]);
+    expect(plan.reason).toBe(
+      'Remove 1 track, Reorder tracks, Change default tracks',
+    );
+  });
+
+  test('French with English subtitles: only French audio, English subtitles on', () => {
+    const plan = planTracks(raw, preset('french-english-subs'));
+    expect(plan.keepAudio).toEqual([2]);
+    expect(plan.removeAudio).toEqual([1]);
+    expect(plan.keepSubtitles).toEqual([3]);
+    expect(plan.defaults).toEqual([2, 3]);
+  });
+
+  test('audio and subtitle languages are separate lists', () => {
+    const plan = planTracks(raw, {
+      ...DEFAULT_TRACK_OPTIONS,
+      audioLanguages: ['eng'],
+      subtitleLanguages: ['fra'],
+    });
+    expect(plan.keepAudio).toEqual([1]);
+    expect(plan.keepSubtitles).toEqual([4]);
+  });
+
+  test('without asking for defaults or order, the file keeps its own flags and order', () => {
+    const plan = planTracks(raw, {
+      ...DEFAULT_TRACK_OPTIONS,
+      audioLanguages: ['eng', 'fra'],
+      subtitleLanguages: ['eng', 'fra'],
+    });
+    expect(plan.action).toBe('already-clean');
+    expect(plan.keepAudio).toEqual([1, 2]);
+    expect(plan.defaults).toEqual([1, 3]);
+  });
+
+  test('a file already in the wanted state needs nothing', () => {
+    const done: StreamInfo[] = [
+      { index: 0, type: 'video' },
+      { index: 1, type: 'audio', language: 'fra', default: true },
+      { index: 2, type: 'audio', language: 'eng', default: false },
+      { index: 3, type: 'subtitle', language: 'eng', default: false },
+    ];
+    const plan = planTracks(done, preset('dual-french'));
+    expect(plan.action).toBe('already-clean');
+    expect(plan.reason).toBe('Nothing to change');
+  });
+
+  test('only the default changes when filtering is off', () => {
+    const plan = planTracks(raw, {
+      ...DEFAULT_TRACK_OPTIONS,
+      filterAudio: false,
+      filterSubtitles: false,
+      defaultAudio: 'French',
+      defaultSubtitle: 'none',
+    });
+    expect(plan.keepAudio).toEqual([1, 2]);
+    expect(plan.removeAudio).toEqual([]);
+    expect(plan.defaults).toEqual([2]);
+    expect(plan.reason).toBe('Change default tracks');
+  });
+
+  test('a default language the file does not have leaves the flags alone', () => {
+    const plan = planTracks(raw, {
+      ...DEFAULT_TRACK_OPTIONS,
+      filterAudio: false,
+      filterSubtitles: false,
+      defaultAudio: 'jpn',
+      defaultSubtitle: 'jpn',
+    });
+    expect(plan.action).toBe('already-clean');
+    expect(plan.defaults).toEqual([1, 3]);
+  });
+
+  test('when the default audio track is removed, the first one left becomes the default', () => {
+    const plan = planTracks(raw, {
+      ...DEFAULT_TRACK_OPTIONS,
+      audioLanguages: ['fra'],
+    });
+    expect(plan.keepAudio).toEqual([2]);
+    expect(plan.defaults).toContain(2);
+  });
+
+  test('tracks of one language keep the file order, other languages go last', () => {
+    const many: StreamInfo[] = [
+      { index: 1, type: 'audio', language: 'jpn' },
+      { index: 2, type: 'audio', language: 'eng' },
+      { index: 3, type: 'audio', language: 'fra' },
+      { index: 4, type: 'audio', language: 'eng' },
+    ];
+    const plan = planTracks(many, {
+      ...DEFAULT_TRACK_OPTIONS,
+      filterAudio: false,
+      audioLanguages: ['fra', 'eng'],
+      orderByLanguage: true,
+    });
+    expect(plan.keepAudio).toEqual([3, 2, 4, 1]);
+  });
+
+  test("ffmpeg is told each kept track's default flag, in output order", () => {
+    const plan = planTracks(raw, preset('dual-french'));
+    const args = buildTrackArgs('in.mkv', 'out.mkv', plan);
+    expect(args).toEqual([
+      '-y',
+      '-hide_banner',
+      '-i',
+      'in.mkv',
+      '-map',
+      '0:v',
+      '-map_chapters',
+      '0',
+      '-map',
+      '0:2',
+      '-map',
+      '0:1',
+      '-map',
+      '0:3',
+      '-disposition:a:0',
+      'default',
+      '-disposition:a:1',
+      '0',
+      '-disposition:s:0',
+      '0',
+      '-c',
+      'copy',
+      'out.mkv',
+    ]);
+  });
+
+  test('an MP4 cannot have every subtitle off, so its first stays on and the plan says so', () => {
+    const mp4 = planTracks(raw, preset('dual-french'), 'Ep.mp4');
+    expect(mp4.defaults).toEqual([2, 3]);
+    expect(mp4.notes).toHaveLength(1);
+    const mkv = planTracks(raw, preset('dual-french'), 'Ep.mkv');
+    expect(mkv.defaults).toEqual([2]);
+    expect(mkv.notes).toEqual([]);
+    // Once an MP4 is in that state, running the same settings again changes nothing.
+    const done: StreamInfo[] = [
+      { index: 0, type: 'video' },
+      { index: 1, type: 'audio', language: 'fra', default: true },
+      { index: 2, type: 'audio', language: 'eng', default: false },
+      { index: 3, type: 'subtitle', language: 'eng', default: true },
+    ];
+    expect(planTracks(done, preset('dual-french'), 'Ep.mp4').action).toBe(
+      'already-clean',
+    );
+    expect(isMp4Family('a.M4V')).toBe(true);
+    expect(isMp4Family('a.mkv')).toBe(false);
+  });
+
+  test('the presets are what they say', () => {
+    expect(TRACK_PRESETS.map((p) => p.id)).toEqual([
+      'dual-french',
+      'french-english-subs',
+      'english',
+    ]);
+    expect(preset('english').audioLanguages).toEqual(['eng']);
   });
 });

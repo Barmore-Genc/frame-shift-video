@@ -106,6 +106,7 @@ export async function probe(file: string): Promise<ProbeResult> {
     codec: s.codec_name,
     language: s.tags?.language,
     title: s.tags?.title,
+    default: s.disposition?.default === 1,
   }));
   const video = (data.streams ?? []).find(
     (s) => s.codec_type === 'video' && s.disposition?.attached_pic !== 1,
@@ -204,7 +205,7 @@ export async function previewTracks(
   return {
     path: relativeToHome(file),
     streams: info.streams,
-    plan: planTracks(info.streams, options),
+    plan: planTracks(info.streams, options, file),
   };
 }
 
@@ -422,13 +423,13 @@ export function queueTrackCleanup(
     const source = resolveInHome(relative);
     enqueue('tracks', path.basename(source), async (task, signal) => {
       const info = await probe(source);
-      const plan = planTracks(info.streams, options);
+      const plan = planTracks(info.streams, options, source);
       if (plan.action === 'skip-no-audio') {
         task.message = `Skipped: ${plan.reason}`;
         return 'skipped';
       }
       if (plan.action === 'already-clean') {
-        task.message = 'Already clean';
+        task.message = plan.reason;
         return 'skipped';
       }
       const output = cleanedPath(source, options.replace);

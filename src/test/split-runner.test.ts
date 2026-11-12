@@ -25,7 +25,7 @@ import {
   queueSplit,
   queueTrackCleanup,
 } from '../../server/split-runner';
-import { DEFAULT_TRACK_OPTIONS } from '../../server/split-tools';
+import { DEFAULT_TRACK_OPTIONS, TRACK_PRESETS } from '../../server/split-tools';
 import {
   splitCancelHandler,
   splitClearHandler,
@@ -51,7 +51,12 @@ function ff(args: string[]) {
 
 interface Probed {
   duration: number;
-  streams: Array<{ type: string; language?: string; codec?: string }>;
+  streams: Array<{
+    type: string;
+    language?: string;
+    codec?: string;
+    default: boolean;
+  }>;
 }
 
 function probeFile(file: string): Probed {
@@ -72,6 +77,7 @@ function probeFile(file: string): Probed {
       type: s.codec_type,
       language: s.tags?.language,
       codec: s.codec_name,
+      default: s.disposition?.default === 1,
     })),
   };
 }
@@ -125,6 +131,7 @@ beforeAll(async () => {
       'mixed',
       'big',
       'numbering',
+      'raw',
     ].map(dir),
   );
   const srt = (name: string) => fs.writeFile(path.join(home, name), SRT);
@@ -312,6 +319,117 @@ beforeAll(async () => {
     '-preset',
     'ultrafast',
     path.join(home, 'nobreak/NoBreak.mkv'),
+  ]);
+
+  // Like the raw Ladybug mp4s: English audio on by default, French second, an English mov_text
+  // subtitle on by default, and a picture stored as a second video stream.
+  ff([
+    '-f',
+    'lavfi',
+    '-i',
+    'color=red:s=64x64',
+    '-frames:v',
+    '1',
+    path.join(home, 'cover.png'),
+  ]);
+  ff([
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=160x120:r=10:d=20',
+    '-i',
+    path.join(home, 'cover.png'),
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=f=440:d=20',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=f=880:d=20',
+    '-i',
+    sub('en.srt'),
+    '-map',
+    '0:v',
+    '-map',
+    '1:v',
+    '-map',
+    '2:a',
+    '-map',
+    '3:a',
+    '-map',
+    '4',
+    '-metadata:s:a:0',
+    'language=eng',
+    '-metadata:s:a:1',
+    'language=fra',
+    '-metadata:s:s:0',
+    'language=eng',
+    '-c:v:0',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-c:v:1',
+    'png',
+    '-disposition:v:1',
+    'attached_pic',
+    '-c:a',
+    'aac',
+    '-c:s',
+    'mov_text',
+    '-disposition:a:0',
+    'default',
+    '-disposition:a:1',
+    '0',
+    '-disposition:s:0',
+    'default',
+    path.join(home, 'raw/Raw.mp4'),
+  ]);
+  // Like the MNKYDDL mkvs: French first and default, English second, English subtitle on.
+  ff([
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=s=160x120:r=10:d=20',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=f=440:d=20',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=f=880:d=20',
+    '-i',
+    sub('en.srt'),
+    '-map',
+    '0:v',
+    '-map',
+    '1:a',
+    '-map',
+    '2:a',
+    '-map',
+    '3',
+    '-metadata:s:a:0',
+    'language=fra',
+    '-metadata:s:a:1',
+    'language=eng',
+    '-metadata:s:s:0',
+    'language=eng',
+    '-c:v',
+    'libx264',
+    '-preset',
+    'ultrafast',
+    '-c:a',
+    'aac',
+    '-c:s',
+    'srt',
+    '-disposition:a:0',
+    'default',
+    '-disposition:a:1',
+    '0',
+    '-disposition:s:0',
+    'default',
+    path.join(home, 'raw/Dual.mkv'),
   ]);
 
   // Numbering: good, no break, good (alphabetical order).
@@ -806,7 +924,8 @@ describe('track cleanup', () => {
   test('keeping Japanese instead rewrites that same file', async () => {
     queueTrackCleanup(['noeng/NoEnglish.mkv'], {
       ...DEFAULT_TRACK_OPTIONS,
-      keepLanguages: ['jpn'],
+      audioLanguages: ['jpn'],
+      subtitleLanguages: ['jpn'],
       replace: false,
     });
     await idle();
@@ -827,7 +946,7 @@ describe('track cleanup', () => {
     await idle();
     expect(listTasks()[0]).toMatchObject({
       status: 'skipped',
-      message: 'Already clean',
+      message: 'Nothing to change',
     });
     expect(await exists('clean/Clean.cleaned.mkv')).toBe(false);
   });
@@ -886,6 +1005,160 @@ describe('track cleanup', () => {
         replace: false,
       }),
     ).toThrow('outside');
+  });
+});
+
+describe('default tracks (the raw Ladybug layouts)', () => {
+  const preset = (id: string, extra: object = {}) => ({
+    ...TRACK_PRESETS.find((p) => p.id === id)!.settings,
+    ...extra,
+  });
+  const layout = (file: string) => {
+    const p = probeFile(path.join(home, file));
+    const pick = (type: string) =>
+      p.streams
+        .filter((s) => s.type === type)
+        .map((s) => `${s.language ?? '-'}${s.default ? '*' : ''}`);
+    return {
+      audio: pick('audio'),
+      subs: pick('subtitle'),
+      video: p.streams.filter((s) => s.type === 'video').length,
+    };
+  };
+
+  test('the raw mp4 starts English-first with English subtitles on', () => {
+    expect(layout('raw/Raw.mp4')).toEqual({
+      audio: ['eng*', 'fra'],
+      subs: ['eng*'],
+      video: 2,
+    });
+  });
+
+  test('dual audio, French first: both kept, French first and on, subtitles off, picture kept', async () => {
+    await tracksRunHandler(
+      post({ paths: ['raw/Raw.mp4'], ...preset('dual-french') }),
+      {},
+    );
+    await idle();
+    expect(listTasks()[0].status).toBe('done');
+    expect(layout('raw/Raw.cleaned.mp4')).toEqual({
+      audio: ['fra*', 'eng'],
+      subs: ['eng*'], // MP4 cannot turn its only subtitle off by default
+      video: 2,
+    });
+    expect(
+      probeFile(path.join(home, 'raw/Raw.cleaned.mp4')).duration,
+    ).toBeCloseTo(20, 0);
+    await fs.rm(path.join(home, 'raw/Raw.cleaned.mp4'));
+  });
+
+  test('French with English subtitles: one audio track, subtitle on', async () => {
+    await tracksRunHandler(
+      post({ paths: ['raw/Raw.mp4'], ...preset('french-english-subs') }),
+      {},
+    );
+    await idle();
+    expect(listTasks()[0].status).toBe('done');
+    expect(layout('raw/Raw.cleaned.mp4')).toEqual({
+      audio: ['fra*'],
+      subs: ['eng*'],
+      video: 2,
+    });
+    await fs.rm(path.join(home, 'raw/Raw.cleaned.mp4'));
+  });
+
+  test('the mkv with subtitles off by default: French first and on, subtitle kept but off', async () => {
+    await tracksRunHandler(
+      post({ paths: ['raw/Dual.mkv'], ...preset('dual-french') }),
+      {},
+    );
+    await idle();
+    expect(listTasks()[0].status).toBe('done');
+    expect(layout('raw/Dual.cleaned.mkv')).toEqual({
+      audio: ['fra*', 'eng'],
+      subs: ['eng'],
+      video: 1,
+    });
+    await fs.rm(path.join(home, 'raw/Dual.cleaned.mkv'));
+  });
+
+  test('the mkv turned into English only: French removed, English on', async () => {
+    await tracksRunHandler(
+      post({ paths: ['raw/Dual.mkv'], ...preset('english') }),
+      {},
+    );
+    await idle();
+    expect(layout('raw/Dual.cleaned.mkv')).toEqual({
+      audio: ['eng*'],
+      subs: ['eng*'],
+      video: 1,
+    });
+    await fs.rm(path.join(home, 'raw/Dual.cleaned.mkv'));
+  });
+
+  test('changing only the default keeps every track and the order', async () => {
+    await tracksRunHandler(
+      post({
+        paths: ['raw/Raw.mp4'],
+        audioLanguages: 'eng, fra',
+        subtitleLanguages: 'eng',
+        filterAudio: false,
+        filterSubtitles: false,
+        defaultAudio: 'fra',
+        defaultSubtitle: 'none',
+      }),
+      {},
+    );
+    await idle();
+    expect(layout('raw/Raw.cleaned.mp4')).toEqual({
+      audio: ['eng', 'fra*'],
+      subs: ['eng*'],
+      video: 2,
+    });
+    await fs.rm(path.join(home, 'raw/Raw.cleaned.mp4'));
+  });
+
+  test('running the same settings again does nothing; the original is rewritten only once', async () => {
+    await fs.copyFile(
+      path.join(home, 'raw/Raw.mp4'),
+      path.join(home, 'raw/Again.mp4'),
+    );
+    const body = {
+      paths: ['raw/Again.mp4'],
+      replace: true,
+      ...preset('dual-french'),
+    };
+    await tracksRunHandler(post(body), {});
+    await idle();
+    expect(listTasks()[0].status).toBe('done');
+    expect(layout('raw/Again.mp4').audio).toEqual(['fra*', 'eng']);
+    await tracksRunHandler(post(body), {});
+    await idle();
+    expect(listTasks()[1]).toMatchObject({
+      status: 'skipped',
+      message: 'Nothing to change',
+    });
+    await fs.rm(path.join(home, 'raw/Again.mp4'));
+  });
+
+  test('the preview reports the plan, including which tracks end up on', async () => {
+    const result = await (
+      await tracksPreviewHandler(
+        post({ path: 'raw/Raw.mp4', ...preset('dual-french') }),
+        {},
+      )
+    ).json();
+    const plan = result.files[0].plan;
+    expect(plan.action).toBe('clean');
+    expect(plan.keepAudio).toEqual([2, 1]);
+    expect(plan.defaults).toEqual([2, 3]);
+    expect(plan.notes[0]).toContain('MP4 always plays its first subtitle');
+    expect(
+      result.files[0].streams.find((s: any) => s.index === 1),
+    ).toMatchObject({
+      language: 'eng',
+      default: true,
+    });
   });
 });
 

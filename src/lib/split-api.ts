@@ -45,10 +45,16 @@ export interface SplitPreviewRequest {
 }
 
 export interface TrackOptionsRequest {
-  languages: string;
+  audioLanguages: string;
+  subtitleLanguages: string;
   filterAudio: boolean;
   filterSubtitles: boolean;
   keepUntagged: boolean;
+  orderByLanguage: boolean;
+  /** Language to play by default; empty leaves the file alone. */
+  defaultAudio: string;
+  /** Empty leaves the file alone, "none" turns subtitles off by default, or a language. */
+  defaultSubtitle: string;
 }
 
 export interface StreamInfo {
@@ -57,6 +63,7 @@ export interface StreamInfo {
   codec?: string;
   language?: string;
   title?: string;
+  default?: boolean;
 }
 
 export interface TrackPreviewFile {
@@ -65,8 +72,13 @@ export interface TrackPreviewFile {
   plan: {
     action: 'clean' | 'already-clean' | 'skip-no-audio';
     reason: string;
+    keepAudio: number[];
+    keepSubtitles: number[];
     removeAudio: number[];
     removeSubtitles: number[];
+    /** Kept tracks that will have the default flag. */
+    defaults: number[];
+    notes: string[];
   };
 }
 
