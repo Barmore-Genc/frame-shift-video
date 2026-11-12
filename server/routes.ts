@@ -75,6 +75,15 @@ import {
   subtitlesRemoveTrackHandler,
   subtitlesRemovePicturesHandler,
 } from './handlers/subtitles';
+import {
+  splitTasksHandler,
+  splitPreviewHandler,
+  splitRunHandler,
+  tracksPreviewHandler,
+  tracksRunHandler,
+  splitCancelHandler,
+  splitClearHandler,
+} from './handlers/split';
 
 function getSettingsResponse(corsHeaders: Record<string, string>): Response {
   const version = process.env.APP_VERSION || null;
@@ -255,6 +264,15 @@ const wrappedSubtitlesAutoHandler = withErrorHandler(
   subtitlesAutoHandler,
   'SubtitlesAutoHandler',
 );
+const splitHandlers = {
+  tasks: withErrorHandler(splitTasksHandler, 'SplitTasksHandler'),
+  preview: withErrorHandler(splitPreviewHandler, 'SplitPreviewHandler'),
+  run: withErrorHandler(splitRunHandler, 'SplitRunHandler'),
+  tracksPreview: withErrorHandler(tracksPreviewHandler, 'TracksPreviewHandler'),
+  tracksRun: withErrorHandler(tracksRunHandler, 'TracksRunHandler'),
+  cancel: withErrorHandler(splitCancelHandler, 'SplitCancelHandler'),
+  clear: withErrorHandler(splitClearHandler, 'SplitClearHandler'),
+};
 const wrappedDiscsNextHandler = withErrorHandler(
   discsNextHandler,
   'DiscsNextHandler',
@@ -496,6 +514,29 @@ export async function setupRoutes(req: Request): Promise<Response> {
     }
     if (pathname === '/api/subtitles/auto' && req.method === 'PUT') {
       return await wrappedSubtitlesAutoHandler(req, corsHeaders);
+    }
+
+    // Routes for the Split page (separating combined episodes, removing extra tracks)
+    if (pathname === '/api/split/tasks' && req.method === 'GET') {
+      return await splitHandlers.tasks(req, corsHeaders);
+    }
+    if (pathname === '/api/split/preview' && req.method === 'POST') {
+      return await splitHandlers.preview(req, corsHeaders);
+    }
+    if (pathname === '/api/split/run' && req.method === 'POST') {
+      return await splitHandlers.run(req, corsHeaders);
+    }
+    if (pathname === '/api/split/tracks/preview' && req.method === 'POST') {
+      return await splitHandlers.tracksPreview(req, corsHeaders);
+    }
+    if (pathname === '/api/split/tracks/run' && req.method === 'POST') {
+      return await splitHandlers.tracksRun(req, corsHeaders);
+    }
+    if (pathname === '/api/split/cancel' && req.method === 'POST') {
+      return await splitHandlers.cancel(req, corsHeaders);
+    }
+    if (pathname === '/api/split/clear' && req.method === 'POST') {
+      return await splitHandlers.clear(req, corsHeaders);
     }
 
     // Routes for the Discs page (the DVD ripper on the server host)
