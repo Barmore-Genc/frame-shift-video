@@ -171,6 +171,22 @@ function buildFFmpegArgs(config: FFmpegJobConfig): string[] {
   // Input file
   args.push('-i', escapeFilePath(config.inputFile));
 
+  // A custom command that does its own stream mapping (-map) is a complete
+  // command, such as the ones the seedlink service submits through the API.
+  // Appending it would map every stream twice, so it replaces the generated
+  // options. Anything else (for example -x265-params ...) is just an extra
+  // option and is appended to the generated options below.
+  if (options.customCommand) {
+    const customArgs = options.customCommand.trim().split(/\s+/);
+    if (customArgs.includes('-map')) {
+      customArgs.forEach((arg) => args.push(escapeArgument(arg)));
+      args.push('-progress', 'pipe:1');
+      args.push('-y');
+      args.push(escapeFilePath(config.outputFile));
+      return args;
+    }
+  }
+
   // Map streams based on removeExtraVideoStreams setting:
   // When enabled (default): Map only the first video stream to exclude attached pictures
   // like cover art which often have odd dimensions incompatible with x265/x264
@@ -325,9 +341,9 @@ function buildFFmpegArgs(config: FFmpegJobConfig): string[] {
     args.push('-r', escapeArgument(options.advanced.frameRate.fps));
   }
 
-  // Custom options are appended to the generated options (never a
-  // replacement), so the selected codec, mapping and quality always apply.
-  // Options given later win over generated ones when they conflict.
+  // Extra custom options (without their own -map) are appended to the
+  // generated options, so the selected codec, mapping and quality always
+  // apply. Options given later win over generated ones when they conflict.
   if (options.customCommand) {
     options.customCommand
       .trim()

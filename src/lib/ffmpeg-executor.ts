@@ -242,6 +242,7 @@ export class FFmpegExecutor extends EventEmitter {
       let stderrEnded = false;
       let processExited = false;
       let exitCode: number | null = null;
+      let exitSignal: NodeJS.Signals | null = null;
 
       // Spawn FFmpeg process
       this.process = spawn(getFfmpeg(), processedArgs, {
@@ -288,7 +289,9 @@ export class FFmpegExecutor extends EventEmitter {
         } else {
           resolve({
             success: false,
-            error: `FFmpeg failed with exit code ${exitCode}`,
+            error: exitSignal
+              ? `FFmpeg failed with exit code ${exitCode} (killed by signal ${exitSignal})`
+              : `FFmpeg failed with exit code ${exitCode}`,
             tempPath: tempOutputPath,
             stderr,
             exitCode: exitCode,
@@ -349,9 +352,10 @@ export class FFmpegExecutor extends EventEmitter {
       });
 
       // Handle process completion
-      this.process.on('close', (code) => {
+      this.process.on('close', (code, signal) => {
         processExited = true;
         exitCode = code;
+        exitSignal = signal;
         tryResolve();
       });
 
