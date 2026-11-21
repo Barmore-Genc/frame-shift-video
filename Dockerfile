@@ -20,16 +20,19 @@ RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN=$(cat /run/secrets/sentry_auth_token) \
     bun run build
 
-# Production stage - use Alpine for smaller size
-FROM oven/bun:1.3-alpine
+# Production stage - Debian (glibc), not Alpine: Alpine's ffmpeg 6.1 / x265 3.6
+# build segfaults (SIGSEGV) on some files, while Debian's ffmpeg 7.1 encodes them.
+FROM oven/bun:1.3-debian
 
 # Accept version from build stage
 ARG VERSION
 
 WORKDIR /app
 
-# Install ffmpeg (Alpine version is much smaller)
-RUN apk add --no-cache ffmpeg
+# Install ffmpeg (includes ffprobe)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy built frontend and bundled server from build stage
 COPY --from=build /app/dist ./dist
