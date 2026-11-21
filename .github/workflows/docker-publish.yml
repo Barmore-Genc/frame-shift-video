@@ -6,6 +6,11 @@ on:
     tags: ['v*.*.*']
   pull_request:
     branches: ['main']
+  # Sundays 03:00 UTC: rebuild main from fresh base images with no cache, so
+  # the ffmpeg Debian ships (and its security fixes) reaches the image even
+  # when nothing in this repo changed.
+  schedule:
+    - cron: '0 3 * * 0'
 
 env:
   REGISTRY: ghcr.io
@@ -64,6 +69,8 @@ jobs:
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
