@@ -171,19 +171,6 @@ function buildFFmpegArgs(config: FFmpegJobConfig): string[] {
   // Input file
   args.push('-i', escapeFilePath(config.inputFile));
 
-  // If custom command is provided, use it (but still validate)
-  // Custom commands handle their own stream mapping
-  if (options.customCommand) {
-    const customArgs = options.customCommand.trim().split(/\s+/);
-    customArgs.forEach((arg) => args.push(escapeArgument(arg)));
-    // Add progress reporting for custom commands too
-    args.push('-progress', 'pipe:1');
-    // Overwrite output files
-    args.push('-y');
-    args.push(escapeFilePath(config.outputFile));
-    return args;
-  }
-
   // Map streams based on removeExtraVideoStreams setting:
   // When enabled (default): Map only the first video stream to exclude attached pictures
   // like cover art which often have odd dimensions incompatible with x265/x264
@@ -336,6 +323,17 @@ function buildFFmpegArgs(config: FFmpegJobConfig): string[] {
     options.advanced.frameRate.fps
   ) {
     args.push('-r', escapeArgument(options.advanced.frameRate.fps));
+  }
+
+  // Custom options are appended to the generated options (never a
+  // replacement), so the selected codec, mapping and quality always apply.
+  // Options given later win over generated ones when they conflict.
+  if (options.customCommand) {
+    options.customCommand
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .forEach((arg) => args.push(escapeArgument(arg)));
   }
 
   // Progress reporting (for parsing progress updates)

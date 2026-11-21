@@ -187,7 +187,7 @@ export interface ConversionOptions {
   /** Advanced conversion settings */
   advanced: AdvancedConversionOptions;
 
-  /** Custom FFmpeg command (overrides all other options if provided) */
+  /** Extra FFmpeg options, appended after the generated options */
   customCommand?: string;
 }
 

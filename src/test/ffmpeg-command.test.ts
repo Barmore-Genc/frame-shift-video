@@ -208,14 +208,24 @@ describe('FFmpeg Command Generation', () => {
 
       const command = generateFFmpegCommand(customConfig);
 
-      expect(command.args).toEqual([
-        'ffmpeg',
-        '-i',
-        'input.mkv',
+      const baseArgs = generateFFmpegCommand(jobConfig).args;
+      const args = command.args;
+
+      // Generated options (codec, mapping, ...) must still be present
+      expect(args).toContain('-c:v');
+      expect(args).toContain('-map');
+      // Custom options are appended after them, just before -progress
+      const progressIdx = args.indexOf('-progress');
+      expect(args.slice(progressIdx - 4, progressIdx)).toEqual([
         '-tune',
         'film',
         '-profile:v',
         'high',
+      ]);
+      expect(args.slice(0, baseArgs.indexOf('-progress'))).toEqual(
+        baseArgs.slice(0, baseArgs.indexOf('-progress')),
+      );
+      expect(args.slice(-4)).toEqual([
         '-progress',
         'pipe:1',
         '-y',
