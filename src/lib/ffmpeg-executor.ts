@@ -100,6 +100,8 @@ export interface FFmpegFailure {
   stderr: string;
   /** Exit code (null if process failed to start) */
   exitCode: number | null;
+  /** Signal that killed ffmpeg (for example SIGSEGV), if any */
+  exitSignal?: string | null;
   /** Partial progress information if available */
   finalProgress?: FFmpegProgress;
   /** Full ffprobe output for debugging */
@@ -107,6 +109,15 @@ export interface FFmpegFailure {
   /** The FFmpeg command that was executed */
   command: string;
 }
+
+/** Signals that mean ffmpeg itself crashed, as opposed to being cancelled */
+const CRASH_SIGNALS = new Set([
+  'SIGSEGV',
+  'SIGILL',
+  'SIGBUS',
+  'SIGABRT',
+  'SIGFPE',
+]);
 
 /**
  * FFmpeg execution result as discriminated union
@@ -152,6 +163,35 @@ export class FFmpegExecutor extends EventEmitter {
    * Execute an FFmpeg command with progress tracking
    */
   async execute(command: FFmpegCommand): Promise<FFmpegResult> {
+    const result = await this.executeOnce(command, false);
+    if (
+      result.success ||
+      this.killed ||
+      !result.exitSignal ||
+      !CRASH_SIGNALS.has(result.exitSignal)
+    ) {
+      return result;
+    }
+
+    // ffmpeg itself crashed (not an ordinary error exit). Encoder crashes can
+    // depend on threading, so try once more with conservative threading
+    // before giving up.
+    console.warn(
+      `FFmpeg crashed (${result.exitSignal}); retrying once with reduced threading`,
+    );
+    await fs.rm(result.tempPath, { force: true });
+    const retry = await this.executeOnce(command, true);
+    if (retry.success) return retry;
+    return {
+      ...retry,
+      error: `${retry.error} (first attempt: ${result.exitSignal}; retried with reduced threading)`,
+    };
+  }
+
+  private async executeOnce(
+    command: FFmpegCommand,
+    safeMode: boolean,
+  ): Promise<FFmpegResult> {
     // Validate command for security
     validateFFmpegCommand(command);
 
@@ -216,6 +256,19 @@ export class FFmpegExecutor extends EventEmitter {
       if (decoderThreads) {
         const threads = parseInt(decoderThreads, 10);
         processedArgs.unshift('-threads', threads.toString());
+      }
+    }
+
+    // Crash retry: limit threads, and for x265 also limit its worker pool and
+    // frames in flight. Inserted right after the input file.
+    if (safeMode) {
+      const inputFlagIndex = processedArgs.lastIndexOf('-i');
+      if (inputFlagIndex !== -1) {
+        const extra = ['-threads', '2'];
+        if (processedArgs.includes('libx265')) {
+          extra.push('-x265-params', 'pools=2:frame-threads=1');
+        }
+        processedArgs.splice(inputFlagIndex + 2, 0, ...extra);
       }
     }
 
@@ -295,6 +348,7 @@ export class FFmpegExecutor extends EventEmitter {
             tempPath: tempOutputPath,
             stderr,
             exitCode: exitCode,
+            exitSignal,
             finalProgress: lastProgress,
             ffprobeOutput: this.ffprobeOutput,
             command: fullCommand,
