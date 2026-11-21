@@ -62,6 +62,12 @@ function IndexComponent() {
             Discs
           </Link>
           <Link
+            to="/split"
+            className="inline-flex min-h-[44px] items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium transition-colors text-base"
+          >
+            Split &amp; Tracks
+          </Link>
+          <Link
             to="/settings"
             className="inline-flex min-h-[44px] items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-medium transition-colors text-base"
           >
