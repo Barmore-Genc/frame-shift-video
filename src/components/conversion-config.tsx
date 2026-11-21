@@ -11,6 +11,10 @@ import {
   BitDepth,
 } from '@/types/conversion';
 import { useSettings } from '@/lib/api-hooks';
+import {
+  CUSTOM_OPTION_PRESETS,
+  addPresetOptions,
+} from '@/lib/custom-option-presets';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import Highlighter from 'react-highlight-words';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
@@ -57,6 +61,7 @@ export function ConversionConfig({
   });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showCustomOptions, setShowCustomOptions] = useState(false);
+  const [selectedPresetId, setSelectedPresetId] = useState('');
   const [removedHistory, setRemovedHistory] = useState<string[]>([]);
   const MAX_UNDO_HISTORY = 10;
 
@@ -734,6 +739,40 @@ export function ConversionConfig({
             Custom FFmpeg Options (Additional options to append to the generated
             command)
           </label>
+          <select
+            id="custom-option-preset"
+            aria-label="Add a ready-made option"
+            value={selectedPresetId}
+            onChange={(e) => {
+              const preset = CUSTOM_OPTION_PRESETS.find(
+                (p) => p.id === e.target.value,
+              );
+              setSelectedPresetId(e.target.value);
+              if (preset) {
+                setOptions((prev) => ({
+                  ...prev,
+                  customCommand:
+                    addPresetOptions(prev.customCommand, preset) || undefined,
+                }));
+              }
+            }}
+            className="w-full mb-2 p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+          >
+            <option value="">Add a ready-made option…</option>
+            {CUSTOM_OPTION_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+          {selectedPresetId && (
+            <div className="text-xs text-gray-600 dark:text-gray-300 mb-2">
+              {
+                CUSTOM_OPTION_PRESETS.find((p) => p.id === selectedPresetId)
+                  ?.description
+              }
+            </div>
+          )}
           <textarea
             value={options.customCommand || ''}
             onChange={(e) =>
