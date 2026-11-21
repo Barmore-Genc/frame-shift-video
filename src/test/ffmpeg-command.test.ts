@@ -197,6 +197,29 @@ describe('FFmpeg Command Generation', () => {
       expect(command.args).not.toContain('-crf');
     });
 
+    it('treats a custom command with its own -map as a complete command', () => {
+      const fullConfig = {
+        ...jobConfig,
+        options: {
+          ...basicOptions,
+          customCommand:
+            '-map 0:v:0 -map 0:a? -map 0:s? -c:v libx265 -crf 20 -c:a copy',
+        },
+      };
+
+      const args = generateFFmpegCommand(fullConfig).args;
+
+      // Mapped once, not twice (generated options are not added)
+      expect(args.filter((a) => a === '-map').length).toBe(3);
+      expect(args.filter((a) => a === '-c:v').length).toBe(1);
+      expect(args.slice(-4)).toEqual([
+        '-progress',
+        'pipe:1',
+        '-y',
+        'output.mp4',
+      ]);
+    });
+
     it('should handle custom FFmpeg command', () => {
       const customConfig = {
         ...jobConfig,
